@@ -1,5 +1,6 @@
 from app.schemas.document import (
     DocumentReadResult,
+    DocumentReadSnapshotRead,
     DocumentReadStatus,
     DocumentTextBlock,
 )
@@ -18,6 +19,7 @@ __all__ = [
     "SyncTasksResponse",
     "TaskLogRead",
     "DocumentReadResult",
+    "DocumentReadSnapshotRead",
     "DocumentReadStatus",
     "DocumentTextBlock",
 ]

@@ -22,6 +22,24 @@ API / script
 
 本阶段只确认这些职责边界，不创建接口类和实现类。
 
+当前已经落地的文档读取持久化调用链：
+
+```text
+POST /api/tasks/{task_id}/read-document
+  -> DocumentReadingService
+      -> AttachmentRepository             获取已下载的主合同附件
+      -> DocumentReadRepository           按附件 SHA-256 和 Reader 版本查复用结果
+      -> DocumentReaderRouter             路由 PDF / DOCX / Image Reader
+      -> DocumentReadSnapshot             保存原始文本、blocks、状态和错误
+      -> TaskRepository / TaskStateService 记录日志，失败进入 blocked
+
+GET /api/tasks/{task_id}/document-reads
+  -> DocumentReadRepository
+      -> ApprovalAttachment 外键连接查询
+```
+
+`DocumentReadingService` 只在没有可复用成功快照时访问本地文件。`DocumentReadSnapshot` 与后续 `ContractParse` 分开：前者保存文件读取事实，后者未来保存字段和条款等业务理解结果。
+
 ## 3. 各层职责
 
 | 层/目录 | 职责 | 不应承担的职责 |
@@ -42,7 +60,8 @@ API / script
 | --- | --- | --- | --- | --- |
 | 待办同步 | `limit` | 新建或更新的 `ApprovalTask` | 任务仓储 | 单项失败记录日志；无法识别业务标识时不创建任务 |
 | 详情与附件 | `instance_id`、附件标识 | 审批详情、本地文件与校验信息 | 任务、附件仓储和受控文件目录 | 关键接口、附件缺失或校验失败时 `blocked` |
-| 合同解析 | 附件文件 | 字段、条款、证据与定位 | 解析仓储 | 空文档、解析/OCR失败时 `blocked` |
+| 文档读取 | 主合同附件 | 原始文本、文本块与位置 | `DocumentReadSnapshot` | 空文档、读取失败或需要 OCR 时 `blocked` |
+| 合同解析 | 有效读取快照 | 字段、条款、证据与定位 | 解析仓储 | 字段或条款提取失败时 `blocked` |
 | 规则审查 | 有效解析结果、启用规则 | `RuleHit` 列表 | 命中仓储 | 规则执行异常时 `blocked`，不生成成功结论 |
 | 风险汇总 | 规则命中 | `ReviewResult` | 结果仓储 | 汇总失败时 `blocked` |
 | 评论回写 | 审批实例、审查结果 | 平台响应 | 评论日志及任务回写状态 | 回写失败时 `blocked` 且保留已保存结果 |

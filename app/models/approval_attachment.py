@@ -57,3 +57,8 @@ class ApprovalAttachment(Base):
     )
 
     task: Mapped[ApprovalTask] = relationship(back_populates="attachments")
+    document_reads: Mapped[list["DocumentReadSnapshot"]] = relationship(
+        back_populates="attachment",
+        cascade="all, delete-orphan",
+        order_by="DocumentReadSnapshot.id",
+    )

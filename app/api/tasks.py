@@ -8,12 +8,17 @@ from app.core.database import session_scope
 from app.core.task_state import InvalidTaskStateError
 from app.integrations.approval import ApprovalGateway
 from app.models import ApprovalAttachment, ApprovalTask, TaskLog
-from app.repositories import AttachmentRepository, TaskRepository
+from app.repositories import (
+    AttachmentRepository,
+    DocumentReadRepository,
+    TaskRepository,
+)
 from app.schemas import (
     ApprovalAttachmentRead,
     ApprovalTaskRead,
     AttachmentPreparationResponse,
     DocumentReadResult,
+    DocumentReadSnapshotRead,
     SyncTasksResponse,
     TaskLogRead,
 )
@@ -193,6 +198,19 @@ def read_document(task_id: int, session: SessionDependency) -> DocumentReadResul
     except (TaskNotFoundError, InvalidTaskStateError) as error:
         session.rollback()
         raise_http_error(error)
+
+
+@router.get(
+    "/{task_id}/document-reads",
+    response_model=list[DocumentReadSnapshotRead],
+)
+def list_document_reads(
+    task_id: int, session: SessionDependency
+) -> list[DocumentReadSnapshotRead]:
+    if TaskRepository(session).get_task(task_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
+    snapshots = DocumentReadRepository(session).list_for_task(task_id)
+    return [DocumentReadSnapshotRead.model_validate(item) for item in snapshots]
 
 
 @router.get("/{task_id}/logs", response_model=list[TaskLogRead])

@@ -21,7 +21,12 @@ def create_database(database_url: str) -> tuple[Engine, SessionFactory]:
 
 def create_tables(engine: Engine) -> None:
     # 导入模型后，SQLAlchemy 才能发现需要创建的表。
-    from app.models import ApprovalTask, TaskLog  # noqa: F401
+    from app.models import (  # noqa: F401
+        ApprovalAttachment,
+        ApprovalTask,
+        DocumentReadSnapshot,
+        TaskLog,
+    )
 
     Base.metadata.create_all(engine)
 

@@ -46,12 +46,16 @@ def failed_result(
 
 
 class DocumentReader(Protocol):
+    read_method: str
+
     def read(
         self, document_id: int, path: Path, file_type: str
     ) -> DocumentReadResult: ...
 
 
 class PdfDocumentReader:
+    read_method = "pdf_text"
+
     def read(
         self, document_id: int, path: Path, file_type: str
     ) -> DocumentReadResult:
@@ -105,6 +109,8 @@ class PdfDocumentReader:
 
 
 class DocxDocumentReader:
+    read_method = "docx"
+
     def read(
         self, document_id: int, path: Path, file_type: str
     ) -> DocumentReadResult:
@@ -163,6 +169,8 @@ class DocxDocumentReader:
 
 
 class ImageDocumentReader:
+    read_method = "image_pending_ocr"
+
     def read(
         self, document_id: int, path: Path, file_type: str
     ) -> DocumentReadResult:
@@ -194,6 +202,10 @@ class DocumentReaderRouter:
 
     def reader_for(self, file_type: str) -> DocumentReader | None:
         return self._readers.get(file_type.lower().lstrip("."))
+
+    def read_method_for(self, file_type: str) -> str:
+        reader = self.reader_for(file_type)
+        return reader.read_method if reader is not None else "unknown"
 
     def read(
         self,

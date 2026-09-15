@@ -1,6 +1,6 @@
 # 核心领域对象设计
 
-本阶段只定义建议字段、关系和职责，不创建数据库。字段类型为概念类型，实际 ORM 类型和索引在数据库设计阶段确认。
+本文同时记录长期领域对象设计和当前已落地的数据模型。当前 SQLite 已实现 `ApprovalTask`、`TaskLog`、`ApprovalAttachment` 与 `DocumentReadSnapshot`；其余对象仍是后续阶段设计。
 
 ## 1. ApprovalTask
 
@@ -45,7 +45,30 @@
 - `created_at: datetime`
 - `updated_at: datetime`
 
-关系：属于一个 `ApprovalTask`；以后可被一个或多个 `ContractParse` 记录引用。数据库以 `task_id + external_attachment_id` 建立复合唯一约束，避免重复附件记录。
+关系：属于一个 `ApprovalTask`；拥有多个 `DocumentReadSnapshot`，以后还可被一个或多个 `ContractParse` 记录引用。数据库以 `task_id + external_attachment_id` 建立复合唯一约束，避免重复附件记录。
+
+## 2.1 DocumentReadSnapshot（已实现的支撑对象）
+
+职责：保存一次针对具体附件文件版本的原始文档读取结果，供 OCR、字段提取和规则审查跨请求查询与复用。它不承担合同字段或条款的业务解析职责。
+
+字段：
+
+- `id: int`
+- `attachment_id: int`：外键关联 `approval_attachments.id`。
+- `read_method: str`：当前为 `pdf_text`、`docx` 或 `image_pending_ocr`。
+- `file_sha256: str`：读取时对应的附件内容版本。
+- `file_type: str`
+- `text: text`：Reader 获得的原始全文。
+- `blocks_json: json`：按顺序保存 `text`、`page_number`、`block_index`。
+- `page_count: int | null`：仅在格式有可靠页语义时保存；DOCX 为 null。
+- `requires_ocr: bool`
+- `read_status: success | ocr_required | failed`
+- `error_code: str | null`
+- `error_message: text | null`
+- `reader_version: str`
+- `created_at: datetime`
+
+关系：`ApprovalAttachment 1 -> N DocumentReadSnapshot`。不保存 `task_id`，任务查询通过附件外键连接，避免重复的归属数据不一致。当前不拆分文本块表，因为没有单块 SQL 检索需求。
 
 ## 3. ContractParse
 
@@ -177,6 +200,7 @@
 
 ```text
 ApprovalTask 1 ── * ApprovalAttachment
+ApprovalAttachment 1 ── * DocumentReadSnapshot
 ApprovalTask 1 ── * ContractParse * ── 1 ApprovalAttachment
 ApprovalTask 1 ── * RuleHit       * ── 1 ReviewRule
 ContractParse 1 ── * RuleHit

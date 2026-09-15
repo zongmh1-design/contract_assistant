@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-阶段 3：合同文档读取与文本获取最小闭环 —— 已完成。
+阶段 4：文档读取结果持久化最小闭环 —— 已完成。
 
 ## 本阶段已完成
 
@@ -23,6 +23,11 @@
 - JPG、JPEG、PNG 明确返回需要 OCR，本阶段不执行 OCR。
 - 统一处理文件不存在、0 字节、损坏、无法读取和正文无效，并写入 TaskLog。
 - 新增 `POST /api/tasks/{task_id}/read-document` 最小验证入口。
+- 新增 `DocumentReadSnapshot`，按附件保存读取方式、文件 SHA-256、原始文本、blocks JSON、页数、OCR 标记、状态、错误和 Reader 版本。
+- 建立 `ApprovalAttachment 1 -> N DocumentReadSnapshot` 外键关系，不在快照中冗余保存 `task_id`。
+- 成功结果在附件 SHA-256 和 Reader 版本一致时直接复用，并记录 `DOCUMENT_READ_REUSED`；任一变化都会重新读取并新增快照，旧快照保留。
+- PDF/DOCX 成功结果、OCR_REQUIRED、损坏/空内容及有附件归属的文件缺失结果都会持久化。
+- 新增 `GET /api/tasks/{task_id}/document-reads`，可查询来源附件、文本、blocks、状态和错误信息。
 
 ## API
 
@@ -38,6 +43,7 @@
 | POST | `/api/tasks/{task_id}/prepare-attachment` | 识别、下载或复用主合同附件 |
 | GET | `/api/tasks/{task_id}/attachments` | 查询任务附件记录 |
 | POST | `/api/tasks/{task_id}/read-document` | 路由 Reader，返回文本和基础位置 |
+| GET | `/api/tasks/{task_id}/document-reads` | 查询任务下所有文档读取快照 |
 
 ## 测试结果
 
@@ -47,7 +53,7 @@
 uv --cache-dir .uv-cache --python-preference only-system run pytest -q --basetemp=.test-tmp
 ```
 
-结果：32 个测试全部通过，0 个失败。阶段 1–2 的 16 个测试继续通过；新增 16 个测试实例覆盖 PDF 文本与页码、多页顺序、PDF OCR 判断、DOCX 段落和表格顺序、图片 OCR 标记、不存在/0 字节/损坏/空内容、Reader 路由、失败日志及任务/附件不重复。测试客户端依赖产生 2 条弃用警告，不影响本阶段结果。
+结果：44 个测试全部通过，0 个失败。新增 12 个测试覆盖读取快照持久化、blocks JSON、PDF 页码、DOCX null 页码、OCR/失败结果、相同 SHA 和 Reader 版本复用、SHA/版本变化失效、查询 API，以及任务和附件不重复。测试客户端依赖产生 2 条弃用警告，不影响本阶段结果。
 
 ## 当前没有实现
 
@@ -60,6 +66,6 @@ uv --cache-dir .uv-cache --python-preference only-system run pytest -q --basetem
 
 ## 下一阶段建议（尚未开始）
 
-下一阶段建议先设计“OCR 最小闭环”或“读取结果持久化边界”，二者都需要先确认再编码。不得直接进入合同字段、条款或 LLM 提取。
+下一阶段只建议设计“OCR 最小闭环”：消费 `ocr_required` 快照，生成新的 OCR 读取快照，并明确 OCR 失败与 retry 路径。需要确认后才能编码，不进入字段、条款或 LLM 提取。
 
 设计债务：当前 retry 始终执行 `blocked -> parsing -> 重新准备附件`。后续失败点扩展到 `document_reading`、`field_extraction`、`reviewing`、`comment_writeback` 后，需要按 `blocked_stage` 从正确检查点恢复；本阶段未提前实现复杂恢复引擎。
