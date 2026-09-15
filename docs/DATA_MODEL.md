@@ -1,12 +1,12 @@
 # 核心领域对象设计
 
-本文同时记录长期领域对象设计和当前已落地的数据模型。当前 SQLite 已实现 `ApprovalTask`、`TaskLog`、`ApprovalAttachment`、`DocumentReadSnapshot` 与 `ContractParse`；其余对象仍是后续阶段设计。
+本文同时记录长期领域对象设计和当前已落地的数据模型。当前 SQLite 已实现 `ApprovalTask`、`TaskLog`、`ApprovalAttachment`、`DocumentReadSnapshot`、`ContractParse`、`ReviewRule` 与 `RuleHit`；其余对象仍是后续阶段设计。
 
 ## 1. ApprovalTask
 
 职责：表示一个审批实例在本系统中的唯一处理任务，承担去重、主状态、阻塞信息和重试检查点。
 
-建议字段：
+当前字段：
 
 - `id: int`：内部主键。
 - `approval_code: str`：审批编号，用于展示。
@@ -126,36 +126,35 @@ OCR 不增加新表或新字段，而是继续创建 `DocumentReadSnapshot`：
 - `rule_code: str`：稳定且唯一的规则编码。
 - `rule_name: str`
 - `risk_level: low | medium | high`
-- `rule_status: enabled | disabled`
-- `match_mode: deterministic | llm_assisted`
-- `match_text: str`：匹配条件或规则参数的可读表示。
+- `rule_status: active | inactive`
+- `match_mode: field_missing | numeric_threshold | keyword | presence | future_llm`
+- `match_text: str`：JSON 格式的字段路径、关键词或阈值参数；保持原字段名，第一版不再拆配置表。
 - `suggestion_text: str`
-- `rule_version: int`
-- `created_at: datetime`
+- `rule_version: str`：规则条件变化时显式升级，用于命中幂等和历史追踪。
 - `updated_at: datetime`
 
-关系：一条规则可产生多个 `RuleHit`。第一版优先实现 `deterministic`，`llm_assisted` 仅预留枚举，不在本阶段实现。
+关系：一条规则可产生多个 `RuleHit`。默认规则由启动 seed 按唯一 `rule_code` 补充，重复启动不会重复插入，也不会覆盖人工修改。`future_llm` 只预留并跳过，不执行模型调用。
 
 ## 5. RuleHit
 
-职责：记录某任务为什么命中某规则，以及证据来自合同哪里。
+职责：记录某份 ContractParse 为什么命中某一规则版本，以及证据来自合同哪里。
 
-建议字段：
+当前字段：
 
 - `id: int`
-- `task_id: int`
 - `contract_parse_id: int`
 - `rule_id: int`
-- `rule_code_snapshot: str`
-- `rule_name_snapshot: str`
-- `risk_level: low | medium | high`
+- `rule_version: str`
 - `evidence_text: str`
-- `evidence_position: str | None`
-- `suggestion_text: str`
-- `hit_status: hit | not_hit | error`
+- `evidence_position: JSON | None`：直接复制 ContractParse 的 block/page 范围。
+- `evidence_type: source | missing | derived`
+- `actual_value: str | None`
+- `expected_value: str | None`
+- `hit_message: str`
+- `hit_status: hit`
 - `created_at: datetime`
 
-保存规则名称、编码等快照，避免规则以后修改导致历史审查结果无法解释。通常只持久化 `hit` 和 `error`；是否保存全部 `not_hit` 在规则引擎设计阶段决定。
+数据库以 `contract_parse_id + rule_id + rule_version` 唯一，重复执行复用已有命中；规则版本变化时新增命中并保留历史。第一版只保存实际命中，不保存 `not_hit`。不冗余 `task_id`，沿 `ContractParse -> DocumentReadSnapshot -> ApprovalAttachment -> ApprovalTask` 完整追溯。规则定义仍由外键关联；当前不做规则物理删除，避免破坏历史解释。
 
 ## 6. ReviewResult
 
@@ -216,8 +215,7 @@ OCR 不增加新表或新字段，而是继续创建 `DocumentReadSnapshot`：
 ApprovalTask 1 ── * ApprovalAttachment
 ApprovalAttachment 1 ── * DocumentReadSnapshot
 DocumentReadSnapshot 1 ── * ContractParse
-ApprovalTask 1 ── * RuleHit       * ── 1 ReviewRule
-ContractParse 1 ── * RuleHit
+ContractParse 1 ── * RuleHit * ── 1 ReviewRule
 ApprovalTask 1 ── * ReviewResult
 ContractParse 1 ── * ReviewResult
 ReviewResult 1 ── * CommentLog

@@ -12,6 +12,7 @@ from app.repositories import (
     AttachmentRepository,
     ContractParseRepository,
     DocumentReadRepository,
+    RuleHitRepository,
     TaskRepository,
 )
 from app.schemas import (
@@ -23,6 +24,8 @@ from app.schemas import (
     DocumentReadSnapshotRead,
     SyncTasksResponse,
     TaskLogRead,
+    RuleHitRead,
+    RuleReviewResponse,
 )
 from app.services.attachment_preparation_service import (
     AttachmentPreparationError,
@@ -44,6 +47,11 @@ from app.services.document_ocr_service import (
 )
 from app.services.document_source_selector import DocumentReadSnapshotNotFoundError
 from app.services.task_state_service import TaskNotFoundError, TaskStateService
+from app.services.contract_parse_selector import ContractParseNotFoundError
+from app.services.contract_review_service import (
+    ContractReviewService,
+    RuleEngineFailedError,
+)
 
 
 router = APIRouter(prefix="/api/tasks", tags=["approval-tasks"])
@@ -73,6 +81,8 @@ def raise_http_error(error: Exception) -> None:
             AttachmentPreparationError,
             DocumentOcrNotAllowedError,
             DocumentReadSnapshotNotFoundError,
+            ContractParseNotFoundError,
+            RuleEngineFailedError,
         ),
     ):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
@@ -267,6 +277,34 @@ def list_contract_parses(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
     parses = ContractParseRepository(session).list_for_task(task_id)
     return [ContractParseRead.model_validate(item) for item in parses]
+
+
+@router.post("/{task_id}/run-rules", response_model=RuleReviewResponse)
+def run_rules(
+    task_id: int, request: Request, session: SessionDependency
+) -> RuleReviewResponse:
+    try:
+        return ContractReviewService(
+            session, request.app.state.rule_engine
+        ).run_rules(task_id)
+    except (
+        TaskNotFoundError,
+        InvalidTaskStateError,
+        ContractParseNotFoundError,
+        RuleEngineFailedError,
+    ) as error:
+        session.rollback()
+        raise_http_error(error)
+
+
+@router.get("/{task_id}/rule-hits", response_model=list[RuleHitRead])
+def list_rule_hits(
+    task_id: int, session: SessionDependency
+) -> list[RuleHitRead]:
+    if TaskRepository(session).get_task(task_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
+    hits = RuleHitRepository(session).list_for_task(task_id)
+    return [RuleHitRead.from_models(hit, hit.rule) for hit in hits]
 
 
 @router.get("/{task_id}/logs", response_model=list[TaskLogRead])

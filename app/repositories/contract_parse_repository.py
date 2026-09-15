@@ -48,3 +48,18 @@ class ContractParseRepository:
         self.session.add(contract_parse)
         self.session.flush()
         return contract_parse
+
+    def get_latest_usable_for_snapshot(
+        self, document_read_snapshot_id: int
+    ) -> ContractParse | None:
+        statement = (
+            select(ContractParse)
+            .where(
+                ContractParse.document_read_snapshot_id == document_read_snapshot_id,
+                ContractParse.parse_status.in_(
+                    [ContractParseStatus.SUCCESS, ContractParseStatus.PARTIAL]
+                ),
+            )
+            .order_by(ContractParse.id.desc())
+        )
+        return self.session.scalar(statement)

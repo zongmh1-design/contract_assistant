@@ -29,6 +29,15 @@ class TaskStateService:
             task.retry_target = None
         return task
 
+    def start_reviewing(self, task_id: int) -> ApprovalTask:
+        with self.session.begin():
+            task = self._require_task(task_id)
+            self._transition_and_log(task, TaskStatus.REVIEWING)
+            task.blocked_stage = None
+            task.blocked_reason = None
+            task.retry_target = None
+        return task
+
     def block_task(self, task_id: int, reason: str, stage: str = "parsing") -> ApprovalTask:
         clean_reason = reason.strip()
         if not clean_reason:

@@ -20,6 +20,12 @@ from app.schemas.task import (
     SyncTasksResponse,
     TaskLogRead,
 )
+from app.schemas.review import (
+    ReviewRuleRead,
+    RuleHitRead,
+    RuleReviewResponse,
+    RuleReviewSummary,
+)
 
 __all__ = [
     "ApprovalAttachmentRead",
@@ -38,4 +44,8 @@ __all__ = [
     "ExtractedFact",
     "ExtractStatus",
     "StructuredContractExtraction",
+    "ReviewRuleRead",
+    "RuleHitRead",
+    "RuleReviewResponse",
+    "RuleReviewSummary",
 ]

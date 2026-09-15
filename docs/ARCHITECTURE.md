@@ -77,6 +77,29 @@ GET /api/tasks/{task_id}/contract-parses
 
 Extractor 只读取 `DocumentReadSnapshot.blocks_json` 并产生统一 Schema；Service 不理解正则和条款标题。未来 LLM Extractor 必须输出相同结构，但本阶段没有 LLM 调用。字段或条款 `not_found/ambiguous` 是有效业务结果，不触发 blocked。
 
+当前确定性规则审查调用链：
+
+```text
+POST /api/tasks/{task_id}/run-rules
+  -> ContractReviewService
+      -> ContractParseSelector          当前主附件 -> 当前读取快照 -> 最新 success/partial 解析
+      -> ReviewRuleRepository           读取 active 规则
+      -> TaskStateService               parsing -> reviewing
+      -> RuleEngine
+          -> DeterministicRuleEngine    按 match_mode 和 match_text 执行
+      -> RuleHitRepository              按 parse + rule + version 新建或复用命中
+      -> RuleReviewSummary              即时汇总风险等级，不提前持久化 ReviewResult
+      -> TaskRepository                 记录完成、复用或错误
+
+GET /api/tasks/{task_id}/rule-hits
+  -> RuleHitRepository
+
+GET /api/review-rules
+  -> ReviewRuleRepository
+```
+
+Engine 不决定风险等级和建议文案，这些属于 `ReviewRule` 数据；Service 不编写具体风险判断。证据直接使用 `ContractParse` 中已有的 `source_text` 和 `position`。缺失类命中明确标记 `evidence_type=missing`，派生阈值命中标记为 `derived`。
+
 ## 3. 各层职责
 
 | 层/目录 | 职责 | 不应承担的职责 |
@@ -100,8 +123,8 @@ Extractor 只读取 `DocumentReadSnapshot.blocks_json` 并产生统一 Schema；
 | 文档读取 | 主合同附件 | 原始文本、文本块与位置 | `DocumentReadSnapshot` | 空文档、读取失败或需要 OCR 时 `blocked` |
 | OCR | `ocr_required` 快照及附件 | 带页码的统一读取结果 | 新的 `DocumentReadSnapshot` | 引擎、渲染、文件或空内容错误时保存失败快照并 `blocked` |
 | 合同事实提取 | 当前有效读取快照 | 字段、条款、证据与定位 | `ContractParse` | 单字段缺失记 `partial`；找不到快照或程序异常才 `blocked` |
-| 规则审查 | 有效解析结果、启用规则 | `RuleHit` 列表 | 命中仓储 | 规则执行异常时 `blocked`，不生成成功结论 |
-| 风险汇总 | 规则命中 | `ReviewResult` | 结果仓储 | 汇总失败时 `blocked` |
+| 规则审查 | 当前有效 ContractParse、active 规则 | `RuleHit` 与临时汇总 | `RuleHit`；汇总仅响应返回 | 无解析或引擎异常时阻塞于 `reviewing`；0 命中合法 |
+| 风险汇总 | 当前规则命中 | `RuleReviewSummary` | 本阶段不持久化 | 按最高命中等级简单汇总，不做评分 |
 | 评论回写 | 审批实例、审查结果 | 平台响应 | 评论日志及任务回写状态 | 回写失败时 `blocked` 且保留已保存结果 |
 
 ## 5. 外部系统隔离

@@ -215,3 +215,43 @@
 - 决定：`document_read_snapshot_id + extractor_name + extractor_version` 相同，且状态为 `success/partial` 时复用并记录 `CONTRACT_PARSE_REUSED`；输入快照或版本变化时新增记录，旧历史保留。
 - 原因：相同输入与算法的可用结果无需重复计算，同时允许算法升级重新生成事实。
 - 缺点：当前没有并发抢占或数据库唯一约束，并发重复请求仍可能产生重复记录。
+
+## D-028：规则定义与确定性执行代码分开
+
+- 问题：风险等级、阈值和建议如果写入 `if/else`，规则调整必须改代码且难以解释。
+- 方案：全部硬编码；立即建设通用规则 DSL；`ReviewRule` 保存定义，Engine 支持少量明确模式。
+- 决定：`ReviewRule` 保存风险等级、建议、版本及 JSON 格式 `match_text`；`DeterministicRuleEngine` 只实现 `field_missing/numeric_threshold/keyword/presence`，`future_llm` 跳过。
+- 原因：可配置内容与执行职责清楚，同时避免为第一批九条规则建设复杂 DSL 或插件系统。
+- 缺点：`match_text` 当前依赖约定的 JSON 结构，没有独立配置 Schema 或管理接口；修改时需要同步升级 `rule_version`。
+
+## D-029：确定性规则优先于 LLM
+
+- 问题：字段缺失、明确比例和关键词是否应交给 LLM 判断？
+- 方案：全部使用 LLM；确定性与 LLM 混合；先执行可解释的确定性规则。
+- 决定：本阶段只对已结构化事实执行确定性判断，复杂公平性、合规性和隐性风险暂不实现。
+- 原因：相同输入得到稳定结果，阈值和证据可复核，成本低且方便单元测试；不会用“假智能”制造无法解释的风险。
+- 缺点：自由表达、中文数字和隐含语义覆盖有限，后续仍可能需要 LLM 辅助，但必须沿用证据结构。
+
+## D-030：RuleHit 保存证据类型、位置和阈值上下文
+
+- 问题：缺失规则没有原文证据，数值规则又包含派生判断，单个 `evidence_text` 无法区分。
+- 方案：只保存命中布尔值；重新搜索全文；保存 ContractParse 证据及类型、实际值和期望值。
+- 决定：RuleHit 保存 `evidence_text/evidence_position/evidence_type/actual_value/expected_value/hit_message`。原文位置直接复制 ContractParse，缺失说明标记为 `missing`，阈值判断标记为 `derived`。
+- 原因：命中能够回答“依据哪里、实际多少、要求多少”，并避免二次全文搜索猜位置。
+- 缺点：缺失类 `evidence_text` 是系统说明而非合同原文，消费方必须展示 `evidence_type`。
+
+## D-031：按 ContractParse、规则和规则版本复用命中
+
+- 问题：重复执行规则会产生重复 RuleHit，但规则条件升级后又必须保留新旧历史。
+- 方案：每次删除重建；只按 parse + rule 去重；按 parse + rule + version 唯一。
+- 决定：数据库建立 `(contract_parse_id, rule_id, rule_version)` 唯一约束；相同版本已有命中直接复用，版本变化新增命中，不删除旧记录。未命中不落库。
+- 原因：数据库层保证重复命中的幂等性，并允许审计规则版本变化。
+- 缺点：没有单独的审查运行表，无法持久化每次执行的未命中集合；本阶段通过 TaskLog 记录运行概况。
+
+## D-032：风险汇总暂不创建 ReviewResult
+
+- 问题：规则阶段是否应提前保存最终审查结果？
+- 方案：立即创建 ReviewResult；只保存 RuleHit 并即时汇总。
+- 决定：返回临时 `RuleReviewSummary`；存在 high 则 high，否则存在 medium 则 medium，否则 low。任务成功后保持 reviewing。
+- 原因：评论回写和最终结果版本尚未实现，提前持久化会混合阶段职责。
+- 缺点：汇总不能独立跨请求查询；下一阶段若实现 ReviewResult，需要明确其版本和命中集合。

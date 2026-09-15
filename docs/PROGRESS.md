@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-阶段 6：ContractParse + 合同字段/条款提取基础闭环 —— 已完成。
+阶段 7：ReviewRule + RuleHit 确定性规则审查闭环 —— 已完成。
 
 ## 本阶段已完成
 
@@ -43,6 +43,14 @@
 - 全部事实 found 时解析为 success；正常完成但存在 not_found/ambiguous/failed 字段时为 partial；Extractor 程序异常才为 failed 并阻塞于 field_extraction。
 - 相同读取快照和 Extractor 名称/版本的 success/partial 结果直接复用；快照或版本变化新增解析记录并保留旧历史。
 - 新增虚构中文合同文本与中文扫描 PDF；真实 RapidOCR 成功识别合同、编号、甲乙方、人民币金额和付款关键词。
+- 新增 `ReviewRule` 与九条可重复 seed 的默认规则，`rule_code` 唯一；风险等级、阈值和建议文案不散落在 Engine 条件代码中。
+- 新增 `RuleHit`，直接关联 `ContractParse` 与 `ReviewRule`，保存证据类型、原文/说明、block/page 位置、实际值、期望值和命中说明。
+- 新增 `ContractParseSelector`，沿当前主附件和当前有效读取快照选择最新 success/partial 解析，旧文件或旧解析不会被规则阶段误用。
+- 新增 `RuleEngine` 端口与 `DeterministicRuleEngine`，支持字段缺失、数值阈值、关键词和存在性；`future_llm` 只跳过，不调用模型。
+- 第一批规则覆盖主体、金额、保密、验收、付款缺失，预付款比例、付款周期、自动续约及争议管辖信息。
+- 相同 `ContractParse + ReviewRule + rule_version` 命中由数据库唯一约束保证不重复；规则版本变化新增命中并保留历史。
+- 风险汇总按最高命中等级返回临时 `RuleReviewSummary`，本阶段不提前创建 `ReviewResult`。
+- 规则开始时执行 `parsing -> reviewing`，成功保持 reviewing；无可用 ContractParse 或 Engine 异常阻塞于 reviewing，0 命中合法。
 
 ## API
 
@@ -62,6 +70,9 @@
 | POST | `/api/tasks/{task_id}/ocr` | 对明确需要 OCR 的主合同执行或复用 OCR |
 | POST | `/api/tasks/{task_id}/parse-contract` | 提取或复用合同结构化事实 |
 | GET | `/api/tasks/{task_id}/contract-parses` | 查询任务下的 ContractParse 历史 |
+| POST | `/api/tasks/{task_id}/run-rules` | 执行确定性规则并返回命中及临时风险汇总 |
+| GET | `/api/tasks/{task_id}/rule-hits` | 查询任务下可追溯的规则命中历史 |
+| GET | `/api/review-rules` | 查询默认及当前规则定义 |
 
 ## 测试结果
 
@@ -71,11 +82,11 @@
 uv --cache-dir .uv-cache --python-preference only-system run pytest -q --basetemp=.test-tmp
 ```
 
-结果：73 个测试全部通过，0 个失败。结构化提取新增 14 个测试，覆盖当前快照选择、旧 SHA 排除、八项基本字段、八类条款、跨 block/page 证据、DOCX null 页码、缺失/歧义/字段失败、系统异常 blocked、无快照 blocked、持久化查询、快照及 Extractor 版本变化历史、复用及真实中文 RapidOCR smoke。测试客户端依赖产生 2 条弃用警告，不影响本阶段结果。
+结果：97 个测试全部通过，0 个失败。规则阶段新增 24 个测试，覆盖五类缺失、预付款阈值边界、长付款周期、自动续约、inactive、future_llm、证据与位置、数据库幂等、规则版本历史、风险汇总、blocked、状态流转、追溯链及可重复 seed/API。测试客户端依赖产生 2 条弃用警告，不影响本阶段结果。
 
 ## 当前没有实现
 
-- 合同规则、LLM、`ReviewRule`、`RuleHit`、`ReviewResult`
+- LLM 与复杂语义风险规则、`ReviewResult`
 - 评论生成、评论回写及 `CommentLog`
 - 真实审批系统接口
 - 前端
@@ -83,6 +94,6 @@ uv --cache-dir .uv-cache --python-preference only-system run pytest -q --basetem
 
 ## 下一阶段建议（尚未开始）
 
-下一阶段可选择先设计“LLM 辅助补充缺失/歧义字段”，或优先设计确定性的 `ReviewRule + RuleHit`。建议先做规则闭环，因为当前结构化事实已经足以支持可解释的缺失项与数值规则；需要确认后再编码。
+下一阶段建议设计 `ReviewResult + 风险汇总持久化`，把某次有效规则命中集合固化为可供评论回写消费的审查结果；需要确认后再编码。LLM 辅助字段/条款补充可作为另一独立阶段，不应与最终结果持久化混在一起。
 
 设计债务：当前 retry 始终执行 `blocked -> parsing -> 重新准备附件`。后续失败点扩展到 `document_reading`、`field_extraction`、`reviewing`、`comment_writeback` 后，需要按 `blocked_stage` 从正确检查点恢复；本阶段未提前实现复杂恢复引擎。

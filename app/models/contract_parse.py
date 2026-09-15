@@ -49,3 +49,8 @@ class ContractParse(Base):
     document_read_snapshot: Mapped["DocumentReadSnapshot"] = relationship(
         back_populates="contract_parses"
     )
+    rule_hits: Mapped[list["RuleHit"]] = relationship(
+        back_populates="contract_parse",
+        cascade="all, delete-orphan",
+        order_by="RuleHit.id",
+    )
