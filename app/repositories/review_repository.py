@@ -118,6 +118,25 @@ class ReviewResultRepository:
         )
         return list(self.session.scalars(statement).unique())
 
+    def get_latest_current(
+        self,
+        contract_parse_id: int,
+        rule_set_fingerprint: str,
+        rule_hit_fingerprint: str,
+    ) -> ReviewResult | None:
+        statement = (
+            select(ReviewResult)
+            .options(joinedload(ReviewResult.rule_hits))
+            .where(
+                ReviewResult.contract_parse_id == contract_parse_id,
+                ReviewResult.rule_set_fingerprint == rule_set_fingerprint,
+                ReviewResult.rule_hit_fingerprint == rule_hit_fingerprint,
+                ReviewResult.review_status == ReviewStatus.COMPLETED,
+            )
+            .order_by(ReviewResult.id.desc())
+        )
+        return self.session.scalars(statement).unique().first()
+
     def add(self, result: ReviewResult) -> ReviewResult:
         self.session.add(result)
         self.session.flush()

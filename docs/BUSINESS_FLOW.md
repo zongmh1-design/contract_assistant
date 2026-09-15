@@ -24,7 +24,7 @@
 完成
 ```
 
-流程中的 OCR、LLM、PDF 解析、规则执行和真实回写仅表示最终业务位置，本阶段不实现。
+当前已使用 Mock Approval Gateway 完成整个确定性主流程；真实审批平台和 LLM 仍未实现。
 
 ## 2. 正常状态流转
 
@@ -48,7 +48,7 @@ not_written -> writing -> success
 - 发起外部调用前先改为 `writing` 并创建 `CommentLog`。
 - 收到明确成功响应后改为 `success`。
 - 超时、拒绝、响应无法确认或接口异常时改为 `failed`；任务同时进入 `blocked`。
-- 超时不等于对方一定未写入。重试前应先查询平台结果或使用幂等标识；Mock 阶段通过 `request_id` 模拟这一约束。
+- 超时不等于对方一定未写入。当前以 `review_result_id` 作为上游幂等业务键；本地已有 success CommentLog 时直接复用，Mock Gateway 对同一结果也返回同一外部评论。
 
 ## 4. 失败进入 blocked
 
@@ -81,9 +81,10 @@ not_written -> writing -> success
 
 恢复规则：
 
-- `parsing` 重试：重新检查审批详情和附件；文件校验一致时可复用下载文件，解析必须产生新的可审计记录或明确覆盖策略。
-- `reviewing` 重试：存在有效解析结果才允许进入；规则变化或上次规则执行失败时重跑审查。
-- 回写重试：存在有效 `ReviewResult` 时不重复解析和审查；先避免重复评论，再仅执行回写。
+- `attachment_preparation/parsing`：当前通用 `/retry` 保留附件准备恢复。
+- `document_reading`：明确要求使用 `/read-document` 或 `/ocr` 专用入口，不自动回到附件步骤。
+- `field_extraction/reviewing`：失败来源仍不够细，当前明确拒绝通用 retry，不伪装已支持精确恢复。
+- `comment_writeback`：执行 `blocked -> reviewing`，复用有效 ReviewResult，只重新执行评论回写；不下载附件、不 OCR、不提取、不运行规则。
 - `done` 默认不可重试；若合同或规则变化，应由未来明确的“重新审查”用例处理，不混入失败重试。
 
 ## 6. 状态管理约束

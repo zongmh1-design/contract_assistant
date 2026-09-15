@@ -27,6 +27,7 @@ from app.schemas.review import (
     RuleReviewSummary,
 )
 from app.schemas.review_result import ReviewResultRead
+from app.schemas.comment import CommentLogRead, CommentWritebackResponse
 
 __all__ = [
     "ApprovalAttachmentRead",
@@ -39,6 +40,8 @@ __all__ = [
     "DocumentReadStatus",
     "DocumentTextBlock",
     "ContractBasicInfo",
+    "CommentLogRead",
+    "CommentWritebackResponse",
     "ContractClauses",
     "ContractParseRead",
     "EvidencePosition",

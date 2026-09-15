@@ -7,11 +7,12 @@ from sqlalchemy.orm import Session
 from app.core.database import session_scope
 from app.core.task_state import InvalidTaskStateError
 from app.integrations.approval import ApprovalGateway
-from app.models import ApprovalAttachment, ApprovalTask, TaskLog
+from app.models import ApprovalAttachment, ApprovalTask, CommentLog, TaskLog
 from app.repositories import (
     AttachmentRepository,
     ContractParseRepository,
     DocumentReadRepository,
+    CommentLogRepository,
     RuleHitRepository,
     ReviewResultRepository,
     TaskRepository,
@@ -28,6 +29,8 @@ from app.schemas import (
     RuleHitRead,
     RuleReviewResponse,
     ReviewResultRead,
+    CommentLogRead,
+    CommentWritebackResponse,
 )
 from app.services.attachment_preparation_service import (
     AttachmentPreparationError,
@@ -59,6 +62,14 @@ from app.services.review_result_service import (
     ReviewResultService,
     RuleReviewNotFoundError,
 )
+from app.services.comment_writeback_service import (
+    CommentWritebackError,
+    CommentWritebackService,
+)
+from app.services.current_review_result_selector import (
+    CurrentReviewResultNotFoundError,
+)
+from app.services.task_retry_service import RetryStageNotSupportedError, TaskRetryService
 
 
 router = APIRouter(prefix="/api/tasks", tags=["approval-tasks"])
@@ -92,6 +103,9 @@ def raise_http_error(error: Exception) -> None:
             RuleEngineFailedError,
             ReviewResultGenerationError,
             RuleReviewNotFoundError,
+            CommentWritebackError,
+            CurrentReviewResultNotFoundError,
+            RetryStageNotSupportedError,
         ),
     ):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
@@ -162,17 +176,19 @@ def retry_task(
     gateway: GatewayDependency,
 ) -> ApprovalTask:
     try:
-        result = AttachmentPreparationService(
+        return TaskRetryService(
             session,
             gateway,
             request.app.state.contract_storage_root,
-        ).retry_and_prepare(task_id)
-        return result.task
+        ).retry(task_id)
     except (
         TaskNotFoundError,
         InvalidTaskStateError,
         AttachmentPreparationError,
         ValueError,
+        CommentWritebackError,
+        CurrentReviewResultNotFoundError,
+        RetryStageNotSupportedError,
     ) as error:
         session.rollback()
         raise_http_error(error)
@@ -343,6 +359,36 @@ def list_review_results(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
     results = ReviewResultRepository(session).list_for_task(task_id)
     return [ReviewResultRead.from_model(result) for result in results]
+
+
+@router.post("/{task_id}/write-comment", response_model=CommentWritebackResponse)
+def write_comment(
+    task_id: int, session: SessionDependency, gateway: GatewayDependency
+) -> CommentWritebackResponse:
+    try:
+        result = CommentWritebackService(session, gateway).write_comment(task_id)
+        return CommentWritebackResponse(
+            reused=result.reused,
+            task=ApprovalTaskRead.model_validate(result.task),
+            comment_log=CommentLogRead.model_validate(result.comment_log),
+        )
+    except (
+        TaskNotFoundError,
+        InvalidTaskStateError,
+        CurrentReviewResultNotFoundError,
+        CommentWritebackError,
+    ) as error:
+        session.rollback()
+        raise_http_error(error)
+
+
+@router.get("/{task_id}/comment-logs", response_model=list[CommentLogRead])
+def list_comment_logs(
+    task_id: int, session: SessionDependency
+) -> list[CommentLog]:
+    if TaskRepository(session).get_task(task_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
+    return CommentLogRepository(session).list_for_task(task_id)
 
 
 @router.get("/{task_id}/logs", response_model=list[TaskLogRead])

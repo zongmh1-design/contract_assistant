@@ -5,12 +5,14 @@ from app.models.document_read_snapshot import DocumentReadSnapshot, DocumentRead
 from app.models.review_rule import MatchMode, ReviewRule, RiskLevel, RuleStatus
 from app.models.rule_hit import EvidenceType, RuleHit, RuleHitStatus
 from app.models.review_result import ReviewResult, ReviewStatus, review_result_rule_hits
+from app.models.comment_log import CommentLog
 
 __all__ = [
     "ApprovalAttachment",
     "ApprovalTask",
     "ContractParse",
     "ContractParseStatus",
+    "CommentLog",
     "DownloadStatus",
     "DocumentReadSnapshot",
     "DocumentReadStatus",

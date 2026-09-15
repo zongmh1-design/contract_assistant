@@ -5,6 +5,8 @@ from app.integrations.approval.gateway import (
     ApprovalDetailData,
     AttachmentDownloadError,
     PendingApprovalData,
+    CommentWriteError,
+    CommentWriteResponse,
 )
 
 
@@ -189,6 +191,11 @@ class MockApprovalGateway:
         self._remaining_download_failures: dict[tuple[str, str], int] = {
             ("MOCK-DOWNLOAD-FAIL", "att_download_fail_001"): 1
         }
+        self._comment_write_modes: dict[str, str] = {}
+        self.attachment_download_call_count = 0
+        self.comment_write_call_count = 0
+        self.created_comment_count = 0
+        self.written_comments: dict[tuple[str, int], CommentWriteResponse] = {}
 
     def list_pending_contract_approvals(self, limit: int) -> list[PendingApprovalData]:
         if limit < 1:
@@ -204,6 +211,7 @@ class MockApprovalGateway:
     def download_contract_attachment(
         self, instance_id: str, attachment_id: str, file_name: str
     ) -> bytes:
+        self.attachment_download_call_count += 1
         key = (instance_id, attachment_id)
         remaining_failures = self._remaining_download_failures.get(key, 0)
         if remaining_failures > 0:
@@ -234,3 +242,37 @@ class MockApprovalGateway:
             if item["attachment_id"] == attachment_id
         )
         attachment["file_name"] = file_name
+
+    def write_approval_comment(
+        self, instance_id: str, review_id: int, comment_text: str
+    ) -> CommentWriteResponse:
+        self.comment_write_call_count += 1
+        key = (instance_id, review_id)
+        existing = self.written_comments.get(key)
+        if existing is not None:
+            return deepcopy(existing)
+
+        mode = self._comment_write_modes.get(instance_id, "success")
+        if mode == "failure":
+            raise CommentWriteError(f"模拟审批评论接口失败: {instance_id}")
+        if mode == "invalid":
+            return {
+                "success": True,
+                "external_comment_id": "",
+                "message": "",
+            }
+        response: CommentWriteResponse = {
+            "success": True,
+            "external_comment_id": f"mock-comment-{review_id}",
+            "message": "Mock 审批评论写入成功",
+        }
+        self.written_comments[key] = response
+        self.created_comment_count += 1
+        return deepcopy(response)
+
+    def set_comment_write_mode(self, instance_id: str, mode: str) -> None:
+        """仅供测试切换 success、failure、invalid 场景。"""
+
+        if mode not in {"success", "failure", "invalid"}:
+            raise ValueError(f"不支持的 Mock 评论模式: {mode}")
+        self._comment_write_modes[instance_id] = mode

@@ -120,6 +120,30 @@ GET /api/tasks/{task_id}/review-results
 
 规则运行日志中的 `ContractParse + rule-set fingerprint` 是本阶段的最小完成检查点：它既允许 0 RuleHit 的合法审查，又阻止规则版本改变后直接沿用旧审查。`review_result_rule_hits` 关联表固定结果实际使用的命中，后续查询不重新推断历史。评论草稿只存储，不调用 Approval Gateway。
 
+当前评论回写调用链：
+
+```text
+POST /api/tasks/{task_id}/write-comment
+  -> CommentWritebackService
+      -> CurrentReviewResultSelector       当前 parse + rule-set + hit-set + completed
+      -> CommentLogRepository              查找该结果已有 success，或创建 writing 尝试
+      -> TaskStateService                   not_written/failed -> writing
+      -> ApprovalGateway
+          -> MockApprovalGateway            成功、失败、无效响应和上游幂等
+      -> CommentLogRepository              保存 success/failed、响应或错误
+      -> TaskStateService                   成功：writing -> success 且 reviewing -> done
+                                            失败：writing -> failed 且 reviewing -> blocked
+
+POST /api/tasks/{task_id}/retry
+  -> TaskRetryService
+      -> comment_writeback: blocked -> reviewing -> 只重试 CommentWritebackService
+
+GET /api/tasks/{task_id}/comment-logs
+  -> CommentLogRepository
+```
+
+业务 Service 只依赖 `ApprovalGateway` 协议，不导入 Mock。`review_result_id` 同时作为上游幂等业务键；本地若已存在该结果的成功 CommentLog，直接复用且不再调用 Gateway。
+
 ## 3. 各层职责
 
 | 层/目录 | 职责 | 不应承担的职责 |
@@ -154,7 +178,7 @@ GET /api/tasks/{task_id}/review-results
 - `list_pending_contract_approvals(limit)`
 - `get_contract_approval(instance_id)`
 - `download_contract_attachment(instance_id, attachment_id, file_name)`
-- `write_approval_comment(instance_id, review_id)`
+- `write_approval_comment(instance_id, review_id, comment_text)`
 
 Mock 与未来真实平台都遵守同一输入输出约定。适配器负责把外部字段、错误码转换为本系统结构和明确异常。
 

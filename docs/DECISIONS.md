@@ -295,3 +295,35 @@
 - 决定：成功生成或复用 ReviewResult 后不改变状态，任务保持 reviewing。
 - 原因：完整业务流程还包含评论回写；提前 done 会把“结果已生成”和“审批平台已收到结果”混为一谈。
 - 缺点：在评论回写阶段实现前，任务不会自动完成。
+
+## D-038：CommentLog 与 ReviewResult 分开
+
+- 问题：评论草稿、回写尝试和上游响应是否应放在同一条结果记录中？
+- 方案：覆盖 ReviewResult 的回写字段；每次尝试复制完整评论；使用独立 CommentLog。
+- 决定：ReviewResult 保存不可变评论正文；CommentLog 关联任务和结果，只保存一次尝试的状态、响应、外部评论 ID 和错误。
+- 原因：同一结果可能失败后多次重试，审查内容不应重复或被外部调用状态覆盖；任务 write_status 只表达当前整体状态。
+- 缺点：查询完整回写情况需要连接 ReviewResult 和 CommentLog。
+
+## D-039：只有评论明确成功才进入 done
+
+- 问题：生成审查结果后还是写回审批平台后，任务才算完成？
+- 方案：ReviewResult 完成即 done；外部评论明确成功后 done。
+- 决定：只有 `CommentWritebackService` 收到有效成功响应并保存成功 CommentLog 后，才通过 TaskStateService 执行 `reviewing -> done`。
+- 原因：系统目标包含审批评论回写；提前完成会掩盖“结果已生成但审批人尚未收到”的状态。
+- 缺点：外部平台不可用时任务会 blocked，即使本地审查结果完整。
+
+## D-040：评论回写采用本地加上游双层幂等
+
+- 问题：用户重复点击或请求超时重试可能在审批评论区写入重复内容。
+- 方案：每次都调用；只依赖本地成功日志；本地成功日志加上游业务键。
+- 决定：本地先按 `review_result_id` 查找 success CommentLog，存在即复用并记录 `COMMENT_WRITE_REUSED`；Gateway 同时接收 review ID，Mock 对相同 `instance_id + review_id` 返回同一个外部评论 ID。
+- 原因：正常重复请求不会再次访问上游；调用结果不确定时，上游业务键仍提供第二层保护。
+- 缺点：当前没有并发请求锁；真实 Gateway 必须把 review ID 映射到平台支持的幂等键或先查询已写评论。
+
+## D-041：comment_writeback 使用专用 retry 分支
+
+- 问题：旧 `/retry` 会把所有 blocked 任务重新送回附件准备，导致重复下载和重复计算。
+- 方案：立即建设通用恢复引擎；继续统一回附件；按 blocked_stage 做最小分派。
+- 决定：`TaskRetryService` 对 `comment_writeback` 执行 `blocked -> reviewing -> 仅重新回写`；附件阶段保留原恢复；document_reading 指向专用入口；field_extraction/reviewing 暂时明确拒绝通用恢复。
+- 原因：完成本阶段必要恢复，同时不假装所有历史失败点都已经精确支持。
+- 缺点：字段提取和规则/结果阶段仍需以后增加清晰的专用恢复策略。

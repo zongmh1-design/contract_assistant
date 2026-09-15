@@ -28,6 +28,16 @@ class AttachmentDownloadError(IOError):
     """审批适配器下载附件失败时统一抛出的边界异常。"""
 
 
+class CommentWriteResponse(TypedDict):
+    success: bool
+    external_comment_id: str
+    message: str
+
+
+class CommentWriteError(IOError):
+    """审批适配器写入评论失败时统一抛出的边界异常。"""
+
+
 class ApprovalGateway(Protocol):
     def list_pending_contract_approvals(self, limit: int) -> list[PendingApprovalData]: ...
 
@@ -36,3 +46,7 @@ class ApprovalGateway(Protocol):
     def download_contract_attachment(
         self, instance_id: str, attachment_id: str, file_name: str
     ) -> bytes: ...
+
+    def write_approval_comment(
+        self, instance_id: str, review_id: int, comment_text: str
+    ) -> CommentWriteResponse: ...

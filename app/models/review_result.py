@@ -93,3 +93,7 @@ class ReviewResult(Base):
         back_populates="review_results",
         order_by="RuleHit.id",
     )
+    comment_logs: Mapped[list["CommentLog"]] = relationship(
+        back_populates="review_result",
+        order_by="CommentLog.id",
+    )

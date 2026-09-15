@@ -86,6 +86,11 @@ class ApprovalTask(Base):
         cascade="all, delete-orphan",
         order_by="ApprovalAttachment.id",
     )
+    comment_logs: Mapped[list[CommentLog]] = relationship(
+        back_populates="task",
+        cascade="all, delete-orphan",
+        order_by="CommentLog.id",
+    )
 
 
 class TaskLog(Base):

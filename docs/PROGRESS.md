@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-阶段 8：ReviewResult + 风险汇总持久化最小闭环 —— 已完成。
+阶段 9：CommentLog + 审批评论回写最小闭环 —— 已完成。
 
 ## 本阶段已完成
 
@@ -58,6 +58,14 @@
 - 使用标准库 SHA-256 计算规则集合与命中集合指纹；相同 parse、两类指纹和 review_version 才复用并记录 `REVIEW_RESULT_REUSED`。
 - `DeterministicReviewResultBuilder` 按真实命中动态生成 summary、结构化 focus points 和中文 comment draft，不调用 LLM 或审批平台。
 - 确定性规则完整执行记 completed；构建异常保存 failed ReviewResult 并阻塞于 reviewing。成功生成后仍保持 reviewing，等待后续评论回写。
+- 新增 `CommentLog`，按回写尝试保存任务、ReviewResult、状态、响应、外部评论 ID 和错误；不重复保存评论正文。
+- `CurrentReviewResultSelector` 只选择当前 ContractParse、当前规则/命中指纹对应的最新 completed ReviewResult，不误用历史结果。
+- `CommentWritebackService` 只依赖 ApprovalGateway；Mock 支持成功、上游异常、无效响应以及同一 review ID 的幂等返回。
+- 评论开始时 `not_written/failed -> writing`；明确成功后 `writing -> success` 且任务 `reviewing -> done`，并记录完整 TaskLog。
+- 失败保存 failed CommentLog，任务 `write_status=failed` 并阻塞于 `comment_writeback`，已完成的附件、读取、解析、规则和结果全部保留。
+- 相同 ReviewResult 已有成功 CommentLog 时直接复用，不再次调用 Gateway，并记录 `COMMENT_WRITE_REUSED`。
+- `/retry` 新增 blocked_stage 最小分派：comment_writeback 只恢复 reviewing 并重试评论；document_reading 指向专用接口；field_extraction/reviewing 明确拒绝，不再全部重跑附件。
+- 新增 Mock 全业务闭环测试，从待办、附件、文档读取、ContractParse、规则、ReviewResult 到评论写回，最终 task=done、write_status=success，并验证七类数据外键追溯。
 
 ## API
 
@@ -82,6 +90,8 @@
 | GET | `/api/review-rules` | 查询默认及当前规则定义 |
 | POST | `/api/tasks/{task_id}/review-results` | 生成或复用最终审查结果快照 |
 | GET | `/api/tasks/{task_id}/review-results` | 查询任务的 ReviewResult 历史 |
+| POST | `/api/tasks/{task_id}/write-comment` | 写回或复用当前 ReviewResult 的审批评论 |
+| GET | `/api/tasks/{task_id}/comment-logs` | 查询每一次评论回写尝试 |
 
 ## 测试结果
 
@@ -91,18 +101,18 @@
 uv --cache-dir .uv-cache --python-preference only-system run pytest -q --basetemp=.test-tmp
 ```
 
-结果：117 个测试全部通过，0 个失败。ReviewResult 阶段新增 20 个测试，覆盖 high/medium/0-hit 汇总、动态摘要、结构化关注点、证据、评论草稿、来源追溯、关联表、重复复用、RuleHit/规则/review 版本变化、历史保留、blocked、failed 快照、状态、查询和 TaskLog。测试客户端依赖产生 2 条弃用警告，不影响本阶段结果。
+结果：135 个测试全部通过，0 个失败。评论回写阶段新增 18 个测试，覆盖成功状态、CommentLog、外部评论 ID、接口异常、无效响应、专用 retry、无重复下载/OCR/解析/规则、成功幂等、失败重试、前置条件、日志、非评论阶段重试边界和完整业务闭环。测试客户端依赖产生 2 条弃用警告，不影响本阶段结果。
 
 ## 当前没有实现
 
 - LLM 与复杂语义风险规则
-- 评论真实回写及 `CommentLog`；当前只有确定性评论草稿
+- 真实审批平台；当前评论回写使用 Mock Approval Gateway
 - 真实审批系统接口
 - 前端
 - 数据库迁移脚本；当前由 SQLAlchemy 模型创建本地 SQLite 表
 
 ## 下一阶段建议（尚未开始）
 
-下一阶段可选择 `CommentLog + Mock 评论回写`，消费已持久化的 ReviewResult 并完成 reviewing -> done；或者独立实现 LLM 辅助字段/条款补充。建议优先评论回写最小闭环，因为它能完成当前确定性主流程的端到端闭环；需要确认后再编码。
+下一阶段可选择 LLM 辅助字段/条款提取、LLM 语义风险规则、数据库迁移，或完整演示与部署。建议优先补数据库迁移和演示脚本，使当前已闭环的数据模型能够安全演进并方便完整展示；需要确认后再编码。
 
-设计债务：当前 retry 始终执行 `blocked -> parsing -> 重新准备附件`。后续失败点扩展到 `document_reading`、`field_extraction`、`reviewing`、`comment_writeback` 后，需要按 `blocked_stage` 从正确检查点恢复；本阶段未提前实现复杂恢复引擎。
+设计债务：comment_writeback 已支持精确恢复；document_reading 通过专用读取/OCR 接口恢复。field_extraction 与 reviewing 仍缺少按具体错误码分派的恢复入口，当前 `/retry` 会明确拒绝，不伪装支持。

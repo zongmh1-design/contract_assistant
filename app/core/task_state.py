@@ -8,8 +8,8 @@ class InvalidTaskStateError(ValueError):
 ALLOWED_TRANSITIONS: dict[TaskStatus, set[TaskStatus]] = {
     TaskStatus.PENDING: {TaskStatus.PARSING},
     TaskStatus.PARSING: {TaskStatus.REVIEWING, TaskStatus.BLOCKED},
-    TaskStatus.REVIEWING: {TaskStatus.BLOCKED},
-    TaskStatus.BLOCKED: {TaskStatus.PARSING},
+    TaskStatus.REVIEWING: {TaskStatus.BLOCKED, TaskStatus.DONE},
+    TaskStatus.BLOCKED: {TaskStatus.PARSING, TaskStatus.REVIEWING},
     TaskStatus.DONE: set(),
 }
 

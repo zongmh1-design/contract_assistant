@@ -1,6 +1,6 @@
 # 核心领域对象设计
 
-本文同时记录长期领域对象设计和当前已落地的数据模型。当前 SQLite 已实现 `ApprovalTask`、`TaskLog`、`ApprovalAttachment`、`DocumentReadSnapshot`、`ContractParse`、`ReviewRule`、`RuleHit` 与 `ReviewResult`；`CommentLog` 仍是后续阶段设计。
+本文同时记录长期领域对象设计和当前已落地的数据模型。当前 SQLite 已实现八个核心领域对象，并以 `DocumentReadSnapshot` 和 `review_result_rule_hits` 支撑原文快照与结果证据关联。
 
 ## 1. ApprovalTask
 
@@ -181,19 +181,19 @@ OCR 不增加新表或新字段，而是继续创建 `DocumentReadSnapshot`：
 
 职责：记录每一次评论回写尝试、结果和外部响应，不把回写成败只压缩在任务表中。
 
-建议字段：
+当前字段：
 
 - `id: int`
 - `task_id: int`
 - `review_result_id: int`
-- `write_status: writing | success | failed`
-- `request_id: str | None`：本次调用标识，便于排查和幂等控制。
+- `write_status: not_written | writing | success | failed`
 - `write_response_text: str | None`：脱敏后的平台响应。
+- `external_comment_id: str | None`
+- `error_code: str | None`
 - `error_message: str | None`
 - `created_at: datetime`
-- `finished_at: datetime | None`
 
-关系：属于一个任务和一个审查结果。`ApprovalTask.write_status` 是当前状态，`CommentLog` 是完整尝试历史。
+关系：属于一个任务和一个 ReviewResult。`ApprovalTask.write_status` 是当前整体状态，`CommentLog` 是每次具体尝试；同一结果失败后重试会新增日志，不覆盖失败历史。评论正文只保存在 ReviewResult，CommentLog 不重复保存。
 
 ## 8. TaskLog
 
