@@ -3,6 +3,7 @@ from app.parsers.document_readers import (
     DocumentReader,
     DocumentReaderRouter,
     ImageDocumentReader,
+    has_meaningful_text,
     PdfDocumentReader,
 )
 
@@ -12,4 +13,5 @@ __all__ = [
     "PdfDocumentReader",
     "DocxDocumentReader",
     "ImageDocumentReader",
+    "has_meaningful_text",
 ]

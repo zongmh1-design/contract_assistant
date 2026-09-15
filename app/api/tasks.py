@@ -35,6 +35,10 @@ from app.services.mock_failure_service import (
     MockFailureService,
 )
 from app.services.document_reading_service import DocumentReadingService
+from app.services.document_ocr_service import (
+    DocumentOcrNotAllowedError,
+    DocumentOcrService,
+)
 from app.services.task_state_service import TaskNotFoundError, TaskStateService
 
 
@@ -63,6 +67,7 @@ def raise_http_error(error: Exception) -> None:
             ApprovalIdentityConflictError,
             MockFailureNotConfiguredError,
             AttachmentPreparationError,
+            DocumentOcrNotAllowedError,
         ),
     ):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
@@ -196,6 +201,21 @@ def read_document(task_id: int, session: SessionDependency) -> DocumentReadResul
     try:
         return DocumentReadingService(session).read_main_document(task_id)
     except (TaskNotFoundError, InvalidTaskStateError) as error:
+        session.rollback()
+        raise_http_error(error)
+
+
+@router.post("/{task_id}/ocr", response_model=DocumentReadResult)
+def ocr_document(
+    task_id: int, request: Request, session: SessionDependency
+) -> DocumentReadResult:
+    try:
+        return DocumentOcrService(
+            session,
+            request.app.state.ocr_engine,
+            request.app.state.pdf_page_renderer,
+        ).recognize_main_document(task_id)
+    except (TaskNotFoundError, InvalidTaskStateError, DocumentOcrNotAllowedError) as error:
         session.rollback()
         raise_http_error(error)
 

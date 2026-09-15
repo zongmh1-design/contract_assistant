@@ -40,6 +40,24 @@ GET /api/tasks/{task_id}/document-reads
 
 `DocumentReadingService` 只在没有可复用成功快照时访问本地文件。`DocumentReadSnapshot` 与后续 `ContractParse` 分开：前者保存文件读取事实，后者未来保存字段和条款等业务理解结果。
 
+当前 OCR 调用链：
+
+```text
+POST /api/tasks/{task_id}/ocr
+  -> DocumentOcrService
+      -> DocumentReadRepository       校验 ocr_required 前置快照 / 查找可复用 OCR
+      -> TaskStateService             blocked(document_reading) -> parsing
+      -> OcrEngine                    单张图片文字识别端口
+          -> RapidOcrEngine           真实 CPU Provider
+          -> MockOcrEngine            确定性测试 Provider
+      -> PdfPageRenderer              扫描 PDF 专用页面渲染端口
+          -> PyMuPdfPageRenderer      临时目录内逐页生成 PNG
+      -> DocumentReadSnapshot         新增 ocr 成功或失败快照
+      -> TaskRepository               记录 OCR 开始、成功、复用或错误
+```
+
+图片直接交给 `OcrEngine`；扫描 PDF 先按真实页序渲染到临时目录，再逐页 OCR。临时 PNG 在成功或异常后都由上下文管理器清理，不进入 `storage/contracts/` 或数据库。业务服务不导入 RapidOCR API，因此以后替换本地或云 Provider 时不修改 OCR 编排规则。
+
 ## 3. 各层职责
 
 | 层/目录 | 职责 | 不应承担的职责 |
@@ -61,6 +79,7 @@ GET /api/tasks/{task_id}/document-reads
 | 待办同步 | `limit` | 新建或更新的 `ApprovalTask` | 任务仓储 | 单项失败记录日志；无法识别业务标识时不创建任务 |
 | 详情与附件 | `instance_id`、附件标识 | 审批详情、本地文件与校验信息 | 任务、附件仓储和受控文件目录 | 关键接口、附件缺失或校验失败时 `blocked` |
 | 文档读取 | 主合同附件 | 原始文本、文本块与位置 | `DocumentReadSnapshot` | 空文档、读取失败或需要 OCR 时 `blocked` |
+| OCR | `ocr_required` 快照及附件 | 带页码的统一读取结果 | 新的 `DocumentReadSnapshot` | 引擎、渲染、文件或空内容错误时保存失败快照并 `blocked` |
 | 合同解析 | 有效读取快照 | 字段、条款、证据与定位 | 解析仓储 | 字段或条款提取失败时 `blocked` |
 | 规则审查 | 有效解析结果、启用规则 | `RuleHit` 列表 | 命中仓储 | 规则执行异常时 `blocked`，不生成成功结论 |
 | 风险汇总 | 规则命中 | `ReviewResult` | 结果仓储 | 汇总失败时 `blocked` |
@@ -141,6 +160,9 @@ contract_assistant/
 | Pydantic | 校验 API、Mock 和服务边界的数据 | 与 FastAPI 配合直接，结构化错误清楚 | `dataclasses` 手工校验，依赖少但边界校验代码更多 |
 | pypdf | 从文本型 PDF 按页提取文本 | API 小、纯 Python、能直接保留 PDF 页序 | PyMuPDF，速度和渲染能力更强，但依赖更重且当前阶段不需要渲染能力 |
 | python-docx | 按正文顺序读取 DOCX 段落和表格 | 成熟、接口直接，适合第一版结构化遍历 | 直接解析 OOXML ZIP，依赖更少但代码复杂、维护成本高 |
+| RapidOCR | 本地识别图片中的中英文文本 | 提供预训练中英文模型，可通过简单适配器运行 | Tesseract 需要额外安装程序和中文语言包；云 OCR 有外部费用与网络依赖 |
+| ONNX Runtime CPU | 执行 RapidOCR 模型推理 | Windows/Python 3.12 有预编译包，不依赖 CUDA | Paddle 推理体积更大；GPU Runtime 当前没有必要 |
+| PyMuPDF | 把扫描 PDF 按页渲染成 OCR 输入图片 | Python 内可控、保留页序，不依赖系统 Poppler | `pdftoppm` 更简单，但要求部署机器安装系统程序 |
 | SQLAlchemy 2.x | 8 个对象的关系映射和事务管理 | SQLite/MySQL 均可用，后续替换数据库成本低 | 直接使用 `sqlite3`，更少依赖但映射和事务代码更分散 |
 | Alembic | 数据库结构可追踪升级 | 与 SQLAlchemy 配套，避免手工改表不可复现 | 第一版早期重建 SQLite；有稳定数据后不安全 |
 | SQLite | 本地持久化与闭环演示 | 零运维、文件级数据库，适合培训项目 | 内存仓储/JSON 文件更简单，但难验证事务、去重和关系 |

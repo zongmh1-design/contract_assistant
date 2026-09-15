@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 
-from app.core.task_state import change_task_status
+from app.core.task_state import InvalidTaskStateError, change_task_status
 from app.models import ApprovalTask, TaskStatus
 from app.repositories import TaskRepository
 
@@ -65,6 +65,33 @@ class TaskStateService:
                 "info",
                 "manual_retry",
                 f"人工重试任务，第 {task.retry_count} 次；上次阻塞原因：{previous_reason}",
+            )
+        return task
+
+    def resume_for_ocr(self, task_id: int) -> ApprovalTask:
+        """只恢复文档读取阻塞，不重新执行附件下载。"""
+
+        with self.session.begin():
+            task = self._require_task(task_id)
+            if task.task_status == TaskStatus.PARSING:
+                return task
+            if (
+                task.task_status != TaskStatus.BLOCKED
+                or task.blocked_stage != "document_reading"
+            ):
+                raise InvalidTaskStateError("当前任务不能从 OCR 专用入口恢复")
+
+            previous_reason = task.blocked_reason
+            self._transition_and_log(task, TaskStatus.PARSING)
+            task.retry_count += 1
+            task.blocked_stage = None
+            task.blocked_reason = None
+            task.retry_target = None
+            self.repository.add_log(
+                task.id,
+                "info",
+                "DOCUMENT_OCR_RESUMED",
+                f"从文档读取阻塞点恢复 OCR；上次原因：{previous_reason}",
             )
         return task
 

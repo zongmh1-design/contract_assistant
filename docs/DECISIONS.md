@@ -143,3 +143,35 @@
 - 决定：只要存在附件和 SHA-256，就保存失败或 `ocr_required` 快照；完全没有主附件或缺少可靠 SHA-256 时只记录日志并阻塞，因为无法形成可信的附件版本快照。
 - 原因：后续可查询某个附件版本为何未取得文本，同时不制造无法可靠关联版本的数据。
 - 缺点：同一失败条件反复执行会保留多条失败快照；复杂失败去重留待真实运行需求出现后处理。
+
+## D-019：OCR Provider 通过 OcrEngine 隔离
+
+- 问题：业务流程需要真实 OCR，但不应绑定某个模型库或云 API。
+- 方案：Service 直接调用 RapidOCR；同时接入多个 Provider；定义一个单图识别端口并提供一真一 Mock。
+- 决定：`DocumentOcrService` 只依赖 `OcrEngine`；第一版真实实现为 RapidOCR + ONNX Runtime CPU，测试使用 `MockOcrEngine`。
+- 原因：当前 Windows 11、Python 3.12 环境已实际验证 CPU 推理，默认模型支持中英文，不依赖 Tesseract、CUDA 或付费服务；Mock 可稳定模拟多页、空结果和异常。
+- 缺点：本地模型增加安装体积和首次初始化时间；真实识别质量仍需用企业合同扫描件验收。
+
+## D-020：扫描 PDF 使用 PyMuPDF 临时逐页渲染
+
+- 问题：pypdf 能提取文字层，但不能把扫描 PDF 页面稳定转换为 OCR 图片。
+- 方案：调用系统 Poppler；替换现有 PDF Reader；OCR 路径单独使用 PyMuPDF。
+- 决定：保留 `PdfDocumentReader + pypdf` 处理文本型 PDF，仅在 `ocr_required` 路径用 `PyMuPdfPageRenderer` 以 200 DPI 逐页渲染临时 PNG。
+- 原因：职责清楚，真实页码可传入 OCR blocks；临时目录自动清理，不污染合同存储。
+- 缺点：PyMuPDF 是新增二进制依赖；同步逐页 OCR 对大合同耗时较长，本阶段不引入队列或并行。
+
+## D-021：OCR 继续生成 DocumentReadSnapshot
+
+- 问题：OCR 文本是否需要另一套表或覆盖原 `ocr_required` 快照？
+- 方案：覆盖旧快照；新增 OCR 专用表；新增同结构读取快照。
+- 决定：OCR 成功或失败都新增 `read_method=ocr` 快照，不覆盖源读取记录。成功复用条件为附件 SHA-256、OCR Provider 版本和成功 OCR 快照同时匹配。
+- 原因：后续提取阶段只消费统一成功快照；源判断、OCR 尝试和历史版本均可审计。
+- 缺点：同一附件会保留多条快照，后续消费方需要明确选择当前文件版本的最新成功结果。
+
+## D-022：OCR 使用专用恢复入口，不扩建通用重试引擎
+
+- 问题：`ocr_required` 已把任务阻塞，但通用 retry 仍会重新准备附件。
+- 方案：立即重写全部 retry；OCR 前保持 blocked；增加局部恢复方法。
+- 决定：`POST /api/tasks/{task_id}/ocr` 校验前置快照后，通过 `TaskStateService.resume_for_ocr` 执行 `blocked(document_reading) -> parsing`，直接复用现有附件；OCR 失败再次阻塞于 `document_reading`。
+- 原因：首次验证了按失败阶段恢复且没有重复下载，同时控制了本阶段范围。
+- 缺点：其他失败阶段仍未获得精确恢复能力；通用 retry 设计债务继续保留。

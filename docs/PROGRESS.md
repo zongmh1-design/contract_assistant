@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-阶段 4：文档读取结果持久化最小闭环 —— 已完成。
+阶段 5：OCR 最小闭环 —— 已完成。
 
 ## 本阶段已完成
 
@@ -28,6 +28,13 @@
 - 成功结果在附件 SHA-256 和 Reader 版本一致时直接复用，并记录 `DOCUMENT_READ_REUSED`；任一变化都会重新读取并新增快照，旧快照保留。
 - PDF/DOCX 成功结果、OCR_REQUIRED、损坏/空内容及有附件归属的文件缺失结果都会持久化。
 - 新增 `GET /api/tasks/{task_id}/document-reads`，可查询来源附件、文本、blocks、状态和错误信息。
+- 新增 `OcrEngine` 端口、真实 `RapidOcrEngine` 和确定性 `MockOcrEngine`；真实 Provider 已在当前 CPU 环境完成图片 smoke test。
+- 新增 `PyMuPdfPageRenderer`，只在扫描 PDF OCR 路径将页面渲染到临时目录，完成后自动清理。
+- 新增 `DocumentOcrService`：图片按第 1 页识别，扫描 PDF 按真实页序逐页识别，`block_index` 在全文范围连续递增。
+- OCR 成功新增 `read_method=ocr` 的成功快照，不覆盖原 `ocr_required` 快照；失败也保存带错误码的 OCR 快照。
+- 相同附件 SHA-256、OCR 版本和成功 OCR 快照直接复用并记录 `DOCUMENT_OCR_REUSED`；SHA 或版本变化会重新执行。
+- 新增 `POST /api/tasks/{task_id}/ocr`。文档读取阻塞任务可直接 `blocked -> parsing -> OCR`，不重新下载附件。
+- 正常文本型 PDF 调用 OCR 会返回 `OCR_NOT_REQUIRED`；OCR 引擎、空结果、不支持类型、输入文件和 PDF 渲染错误均明确处理。
 
 ## API
 
@@ -44,6 +51,7 @@
 | GET | `/api/tasks/{task_id}/attachments` | 查询任务附件记录 |
 | POST | `/api/tasks/{task_id}/read-document` | 路由 Reader，返回文本和基础位置 |
 | GET | `/api/tasks/{task_id}/document-reads` | 查询任务下所有文档读取快照 |
+| POST | `/api/tasks/{task_id}/ocr` | 对明确需要 OCR 的主合同执行或复用 OCR |
 
 ## 测试结果
 
@@ -53,11 +61,11 @@
 uv --cache-dir .uv-cache --python-preference only-system run pytest -q --basetemp=.test-tmp
 ```
 
-结果：44 个测试全部通过，0 个失败。新增 12 个测试覆盖读取快照持久化、blocks JSON、PDF 页码、DOCX null 页码、OCR/失败结果、相同 SHA 和 Reader 版本复用、SHA/版本变化失效、查询 API，以及任务和附件不重复。测试客户端依赖产生 2 条弃用警告，不影响本阶段结果。
+结果：59 个测试全部通过，0 个失败。OCR 新增 15 个测试实例，覆盖 JPG/PNG、扫描 PDF 多页与顺序、快照保留、空结果、引擎异常、渲染失败、输入丢失、不支持类型、SHA/Provider 版本失效、成功复用、正常文本拒绝、专用恢复不下载附件、日志及真实 RapidOCR smoke。测试客户端依赖产生 2 条弃用警告，不影响本阶段结果。
 
 ## 当前没有实现
 
-- OCR、字段/条款提取及 `ContractParse`
+- 字段/条款提取及 `ContractParse`
 - 合同规则、LLM、`ReviewRule`、`RuleHit`、`ReviewResult`
 - 评论生成、评论回写及 `CommentLog`
 - 真实审批系统接口
@@ -66,6 +74,6 @@ uv --cache-dir .uv-cache --python-preference only-system run pytest -q --basetem
 
 ## 下一阶段建议（尚未开始）
 
-下一阶段只建议设计“OCR 最小闭环”：消费 `ocr_required` 快照，生成新的 OCR 读取快照，并明确 OCR 失败与 retry 路径。需要确认后才能编码，不进入字段、条款或 LLM 提取。
+下一阶段建议只设计 `ContractParse + 字段/条款提取` 的数据边界、输入快照选择、证据结构和确定性提取范围。需要确认后再编码，当前不自动进入。
 
 设计债务：当前 retry 始终执行 `blocked -> parsing -> 重新准备附件`。后续失败点扩展到 `document_reading`、`field_extraction`、`reviewing`、`comment_writeback` 后，需要按 `blocked_stage` 从正确检查点恢复；本阶段未提前实现复杂恢复引擎。

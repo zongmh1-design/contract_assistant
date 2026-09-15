@@ -6,6 +6,12 @@ from fastapi import FastAPI
 from app.api.tasks import router as tasks_router
 from app.core.database import create_database, create_tables
 from app.integrations.approval import ApprovalGateway, MockApprovalGateway
+from app.integrations.ocr import (
+    OcrEngine,
+    PdfPageRenderer,
+    PyMuPdfPageRenderer,
+    RapidOcrEngine,
+)
 
 
 DEFAULT_DATABASE_URL = f"sqlite:///{Path('contract_assistant.db').resolve().as_posix()}"
@@ -15,6 +21,8 @@ def create_app(
     database_url: str = DEFAULT_DATABASE_URL,
     approval_gateway: ApprovalGateway | None = None,
     contract_storage_root: Path | None = None,
+    ocr_engine: OcrEngine | None = None,
+    pdf_page_renderer: PdfPageRenderer | None = None,
 ) -> FastAPI:
     engine, session_factory = create_database(database_url)
 
@@ -30,6 +38,8 @@ def create_app(
     app.state.contract_storage_root = (
         contract_storage_root or Path("storage/contracts")
     ).resolve()
+    app.state.ocr_engine = ocr_engine or RapidOcrEngine()
+    app.state.pdf_page_renderer = pdf_page_renderer or PyMuPdfPageRenderer()
     app.include_router(tasks_router)
     return app
 

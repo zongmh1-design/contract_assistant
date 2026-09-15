@@ -55,7 +55,7 @@
 
 - `id: int`
 - `attachment_id: int`：外键关联 `approval_attachments.id`。
-- `read_method: str`：当前为 `pdf_text`、`docx` 或 `image_pending_ocr`。
+- `read_method: str`：当前为 `pdf_text`、`docx`、`image_pending_ocr` 或 `ocr`。
 - `file_sha256: str`：读取时对应的附件内容版本。
 - `file_type: str`
 - `text: text`：Reader 获得的原始全文。
@@ -69,6 +69,15 @@
 - `created_at: datetime`
 
 关系：`ApprovalAttachment 1 -> N DocumentReadSnapshot`。不保存 `task_id`，任务查询通过附件外键连接，避免重复的归属数据不一致。当前不拆分文本块表，因为没有单块 SQL 检索需求。
+
+OCR 不增加新表或新字段，而是继续创建 `DocumentReadSnapshot`：
+
+- 先前快照保留为 `read_method=pdf_text/image_pending_ocr`、`read_status=ocr_required`。
+- OCR 成功新增 `read_method=ocr`、`read_status=success`、`requires_ocr=false`。
+- OCR 失败新增 `read_method=ocr`、`read_status=failed`，保存明确错误码。
+- `reader_version` 对 OCR 快照保存 Provider 及版本，例如 `rapidocr-3.9.2`。
+
+这样字段/条款提取只读取成功的 `DocumentReadSnapshot`，不需要区分文本来自 pypdf、python-docx 还是 OCR。
 
 ## 3. ContractParse
 

@@ -1,10 +1,12 @@
 """生成文档读取测试所需的确定性小文件。"""
 
+from io import BytesIO
 from pathlib import Path
 
 from docx import Document
 from PIL import Image, ImageDraw
 from reportlab.lib.pagesizes import A4
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
 
@@ -43,6 +45,23 @@ def create_image(path: Path, image_format: str) -> None:
     image.save(path, format=image_format)
 
 
+def create_scanned_pdf(path: Path, pages: list[str]) -> None:
+    """把文本绘制到图片后嵌入 PDF，确保 PDF 本身没有文字层。"""
+
+    pdf = canvas.Canvas(str(path), pagesize=A4, invariant=True)
+    for page_text in pages:
+        image = Image.new("RGB", (1200, 300), "white")
+        ImageDraw.Draw(image).text(
+            (60, 95), page_text, fill="black", font_size=64
+        )
+        buffer = BytesIO()
+        image.save(buffer, format="PNG")
+        buffer.seek(0)
+        pdf.drawImage(ImageReader(buffer), 72, 600, width=450, height=112.5)
+        pdf.showPage()
+    pdf.save()
+
+
 def main() -> None:
     FIXTURE_DIR.mkdir(parents=True, exist_ok=True)
     create_pdf(
@@ -57,6 +76,10 @@ def main() -> None:
         ],
     )
     create_pdf(FIXTURE_DIR / "empty_text.pdf", [""])
+    create_scanned_pdf(
+        FIXTURE_DIR / "multi_page_scanned_contract.pdf",
+        ["Scanned contract page one", "Scanned contract page two"],
+    )
     (FIXTURE_DIR / "corrupted.pdf").write_bytes(b"this is not a valid PDF")
 
     create_docx(FIXTURE_DIR / "normal_contract.docx", include_content=True)
