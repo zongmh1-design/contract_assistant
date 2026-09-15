@@ -27,6 +27,7 @@ def create_tables(engine: Engine) -> None:
         ContractParse,
         DocumentReadSnapshot,
         ReviewRule,
+        ReviewResult,
         RuleHit,
         TaskLog,
     )

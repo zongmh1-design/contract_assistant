@@ -6,6 +6,8 @@ from app.models import (
     ContractParse,
     DocumentReadSnapshot,
     ReviewRule,
+    ReviewResult,
+    ReviewStatus,
     RuleHit,
     RuleStatus,
 )
@@ -57,3 +59,66 @@ class RuleHitRepository:
             .order_by(RuleHit.id)
         )
         return list(self.session.scalars(statement))
+
+    def list_current_for_parse(self, contract_parse_id: int) -> list[RuleHit]:
+        statement = (
+            select(RuleHit)
+            .options(joinedload(RuleHit.rule))
+            .join(ReviewRule)
+            .where(
+                RuleHit.contract_parse_id == contract_parse_id,
+                ReviewRule.rule_status == RuleStatus.ACTIVE,
+                RuleHit.rule_version == ReviewRule.rule_version,
+            )
+            .order_by(RuleHit.id)
+        )
+        return list(self.session.scalars(statement))
+
+
+class ReviewResultRepository:
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def find_reusable(
+        self,
+        contract_parse_id: int,
+        rule_set_fingerprint: str,
+        rule_hit_fingerprint: str,
+        review_version: str,
+    ) -> ReviewResult | None:
+        statement = (
+            select(ReviewResult)
+            .options(
+                joinedload(ReviewResult.rule_hits).joinedload(RuleHit.rule)
+            )
+            .where(
+                ReviewResult.contract_parse_id == contract_parse_id,
+                ReviewResult.rule_set_fingerprint == rule_set_fingerprint,
+                ReviewResult.rule_hit_fingerprint == rule_hit_fingerprint,
+                ReviewResult.review_version == review_version,
+                ReviewResult.review_status.in_(
+                    [ReviewStatus.COMPLETED, ReviewStatus.PARTIAL]
+                ),
+            )
+            .order_by(ReviewResult.id.desc())
+        )
+        return self.session.scalars(statement).unique().first()
+
+    def list_for_task(self, task_id: int) -> list[ReviewResult]:
+        statement = (
+            select(ReviewResult)
+            .options(
+                joinedload(ReviewResult.rule_hits).joinedload(RuleHit.rule)
+            )
+            .join(ContractParse)
+            .join(DocumentReadSnapshot)
+            .join(ApprovalAttachment)
+            .where(ApprovalAttachment.task_id == task_id)
+            .order_by(ReviewResult.id)
+        )
+        return list(self.session.scalars(statement).unique())
+
+    def add(self, result: ReviewResult) -> ReviewResult:
+        self.session.add(result)
+        self.session.flush()
+        return result

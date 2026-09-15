@@ -13,6 +13,7 @@ from app.repositories import (
     ContractParseRepository,
     DocumentReadRepository,
     RuleHitRepository,
+    ReviewResultRepository,
     TaskRepository,
 )
 from app.schemas import (
@@ -26,6 +27,7 @@ from app.schemas import (
     TaskLogRead,
     RuleHitRead,
     RuleReviewResponse,
+    ReviewResultRead,
 )
 from app.services.attachment_preparation_service import (
     AttachmentPreparationError,
@@ -51,6 +53,11 @@ from app.services.contract_parse_selector import ContractParseNotFoundError
 from app.services.contract_review_service import (
     ContractReviewService,
     RuleEngineFailedError,
+)
+from app.services.review_result_service import (
+    ReviewResultGenerationError,
+    ReviewResultService,
+    RuleReviewNotFoundError,
 )
 
 
@@ -83,6 +90,8 @@ def raise_http_error(error: Exception) -> None:
             DocumentReadSnapshotNotFoundError,
             ContractParseNotFoundError,
             RuleEngineFailedError,
+            ReviewResultGenerationError,
+            RuleReviewNotFoundError,
         ),
     ):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
@@ -305,6 +314,35 @@ def list_rule_hits(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
     hits = RuleHitRepository(session).list_for_task(task_id)
     return [RuleHitRead.from_models(hit, hit.rule) for hit in hits]
+
+
+@router.post("/{task_id}/review-results", response_model=ReviewResultRead)
+def create_review_result(
+    task_id: int, request: Request, session: SessionDependency
+) -> ReviewResultRead:
+    try:
+        return ReviewResultService(
+            session, request.app.state.review_result_builder
+        ).generate(task_id)
+    except (
+        TaskNotFoundError,
+        InvalidTaskStateError,
+        ContractParseNotFoundError,
+        RuleReviewNotFoundError,
+        ReviewResultGenerationError,
+    ) as error:
+        session.rollback()
+        raise_http_error(error)
+
+
+@router.get("/{task_id}/review-results", response_model=list[ReviewResultRead])
+def list_review_results(
+    task_id: int, session: SessionDependency
+) -> list[ReviewResultRead]:
+    if TaskRepository(session).get_task(task_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
+    results = ReviewResultRepository(session).list_for_task(task_id)
+    return [ReviewResultRead.from_model(result) for result in results]
 
 
 @router.get("/{task_id}/logs", response_model=list[TaskLogRead])

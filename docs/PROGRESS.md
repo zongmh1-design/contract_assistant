@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-阶段 7：ReviewRule + RuleHit 确定性规则审查闭环 —— 已完成。
+阶段 8：ReviewResult + 风险汇总持久化最小闭环 —— 已完成。
 
 ## 本阶段已完成
 
@@ -51,6 +51,13 @@
 - 相同 `ContractParse + ReviewRule + rule_version` 命中由数据库唯一约束保证不重复；规则版本变化新增命中并保留历史。
 - 风险汇总按最高命中等级返回临时 `RuleReviewSummary`，本阶段不提前创建 `ReviewResult`。
 - 规则开始时执行 `parsing -> reviewing`，成功保持 reviewing；无可用 ContractParse 或 Engine 异常阻塞于 reviewing，0 命中合法。
+- 新增不可变 `ReviewResult`，直接关联 ContractParse，保存风险等级、确定性摘要、结构化关注点、评论草稿、状态、错误和汇总版本。
+- 新增 `review_result_rule_hits` 关联表，固定每个结果实际使用的 RuleHit；结果不冗余 task_id，可沿完整来源链追溯。
+- 规则完成日志加入 active rule-set fingerprint，结果生成前必须匹配该检查点；因此 0 命中可合法生成，规则版本改变则必须先重跑规则。
+- 只选择当前 ContractParse、当前 active 规则版本对应的 RuleHit，不混用旧解析或旧规则版本命中。
+- 使用标准库 SHA-256 计算规则集合与命中集合指纹；相同 parse、两类指纹和 review_version 才复用并记录 `REVIEW_RESULT_REUSED`。
+- `DeterministicReviewResultBuilder` 按真实命中动态生成 summary、结构化 focus points 和中文 comment draft，不调用 LLM 或审批平台。
+- 确定性规则完整执行记 completed；构建异常保存 failed ReviewResult 并阻塞于 reviewing。成功生成后仍保持 reviewing，等待后续评论回写。
 
 ## API
 
@@ -73,6 +80,8 @@
 | POST | `/api/tasks/{task_id}/run-rules` | 执行确定性规则并返回命中及临时风险汇总 |
 | GET | `/api/tasks/{task_id}/rule-hits` | 查询任务下可追溯的规则命中历史 |
 | GET | `/api/review-rules` | 查询默认及当前规则定义 |
+| POST | `/api/tasks/{task_id}/review-results` | 生成或复用最终审查结果快照 |
+| GET | `/api/tasks/{task_id}/review-results` | 查询任务的 ReviewResult 历史 |
 
 ## 测试结果
 
@@ -82,18 +91,18 @@
 uv --cache-dir .uv-cache --python-preference only-system run pytest -q --basetemp=.test-tmp
 ```
 
-结果：97 个测试全部通过，0 个失败。规则阶段新增 24 个测试，覆盖五类缺失、预付款阈值边界、长付款周期、自动续约、inactive、future_llm、证据与位置、数据库幂等、规则版本历史、风险汇总、blocked、状态流转、追溯链及可重复 seed/API。测试客户端依赖产生 2 条弃用警告，不影响本阶段结果。
+结果：117 个测试全部通过，0 个失败。ReviewResult 阶段新增 20 个测试，覆盖 high/medium/0-hit 汇总、动态摘要、结构化关注点、证据、评论草稿、来源追溯、关联表、重复复用、RuleHit/规则/review 版本变化、历史保留、blocked、failed 快照、状态、查询和 TaskLog。测试客户端依赖产生 2 条弃用警告，不影响本阶段结果。
 
 ## 当前没有实现
 
-- LLM 与复杂语义风险规则、`ReviewResult`
-- 评论生成、评论回写及 `CommentLog`
+- LLM 与复杂语义风险规则
+- 评论真实回写及 `CommentLog`；当前只有确定性评论草稿
 - 真实审批系统接口
 - 前端
 - 数据库迁移脚本；当前由 SQLAlchemy 模型创建本地 SQLite 表
 
 ## 下一阶段建议（尚未开始）
 
-下一阶段建议设计 `ReviewResult + 风险汇总持久化`，把某次有效规则命中集合固化为可供评论回写消费的审查结果；需要确认后再编码。LLM 辅助字段/条款补充可作为另一独立阶段，不应与最终结果持久化混在一起。
+下一阶段可选择 `CommentLog + Mock 评论回写`，消费已持久化的 ReviewResult 并完成 reviewing -> done；或者独立实现 LLM 辅助字段/条款补充。建议优先评论回写最小闭环，因为它能完成当前确定性主流程的端到端闭环；需要确认后再编码。
 
 设计债务：当前 retry 始终执行 `blocked -> parsing -> 重新准备附件`。后续失败点扩展到 `document_reading`、`field_extraction`、`reviewing`、`comment_writeback` 后，需要按 `blocked_stage` 从正确检查点恢复；本阶段未提前实现复杂恢复引擎。

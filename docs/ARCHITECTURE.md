@@ -100,6 +100,26 @@ GET /api/review-rules
 
 Engine 不决定风险等级和建议文案，这些属于 `ReviewRule` 数据；Service 不编写具体风险判断。证据直接使用 `ContractParse` 中已有的 `source_text` 和 `position`。缺失类命中明确标记 `evidence_type=missing`，派生阈值命中标记为 `derived`。
 
+当前最终审查结果持久化调用链：
+
+```text
+POST /api/tasks/{task_id}/review-results
+  -> ReviewResultService
+      -> ContractParseSelector             选择当前有效 ContractParse
+      -> ReviewRuleRepository              计算当前 active rule-set fingerprint
+      -> TaskRepository                    校验对应规则审查完成检查点
+      -> RuleHitRepository                 只取该 parse、当前 active 规则版本的命中
+      -> ReviewResultRepository            按 parse + 两个 fingerprint + version 复用
+      -> DeterministicReviewResultBuilder  生成等级、摘要、关注点和评论草稿
+      -> ReviewResult + association table  保存不可变快照及实际使用的 RuleHit
+      -> TaskRepository / TaskStateService 记录日志；失败时 blocked
+
+GET /api/tasks/{task_id}/review-results
+  -> ReviewResultRepository
+```
+
+规则运行日志中的 `ContractParse + rule-set fingerprint` 是本阶段的最小完成检查点：它既允许 0 RuleHit 的合法审查，又阻止规则版本改变后直接沿用旧审查。`review_result_rule_hits` 关联表固定结果实际使用的命中，后续查询不重新推断历史。评论草稿只存储，不调用 Approval Gateway。
+
 ## 3. 各层职责
 
 | 层/目录 | 职责 | 不应承担的职责 |
@@ -124,7 +144,7 @@ Engine 不决定风险等级和建议文案，这些属于 `ReviewRule` 数据�
 | OCR | `ocr_required` 快照及附件 | 带页码的统一读取结果 | 新的 `DocumentReadSnapshot` | 引擎、渲染、文件或空内容错误时保存失败快照并 `blocked` |
 | 合同事实提取 | 当前有效读取快照 | 字段、条款、证据与定位 | `ContractParse` | 单字段缺失记 `partial`；找不到快照或程序异常才 `blocked` |
 | 规则审查 | 当前有效 ContractParse、active 规则 | `RuleHit` 与临时汇总 | `RuleHit`；汇总仅响应返回 | 无解析或引擎异常时阻塞于 `reviewing`；0 命中合法 |
-| 风险汇总 | 当前规则命中 | `RuleReviewSummary` | 本阶段不持久化 | 按最高命中等级简单汇总，不做评分 |
+| 风险汇总 | 当前 ContractParse、规则检查点和当前 RuleHit | `ReviewResult` | 结果表及 RuleHit 关联表 | 无规则审查时 blocked；0 命中正常生成 low；构建异常保存 failed 后 blocked |
 | 评论回写 | 审批实例、审查结果 | 平台响应 | 评论日志及任务回写状态 | 回写失败时 `blocked` 且保留已保存结果 |
 
 ## 5. 外部系统隔离

@@ -9,7 +9,7 @@ from app.models import (
     TaskStatus,
 )
 from app.repositories import ReviewRuleRepository, RuleHitRepository, TaskRepository
-from app.rules import DeterministicRuleEngine, RuleEngine
+from app.rules import DeterministicRuleEngine, RuleEngine, rule_set_fingerprint
 from app.schemas import RuleHitRead, RuleReviewResponse, RuleReviewSummary
 from app.services.contract_parse_selector import (
     ContractParseNotFoundError,
@@ -65,6 +65,7 @@ class ContractReviewService:
             raise RuleEngineFailedError(message) from error
 
         rule_by_id = {rule.id: rule for rule in rules}
+        current_rule_set_fingerprint = rule_set_fingerprint(rules)
         hits: list[RuleHit] = []
         created_count = 0
         reused_count = 0
@@ -101,6 +102,7 @@ class ContractReviewService:
                 log_type,
                 (
                     f"规则审查完成，ContractParse: {contract_parse.id}，"
+                    f"RuleSet: {current_rule_set_fingerprint}，"
                     f"新增命中: {created_count}，复用命中: {reused_count}"
                 ),
             )

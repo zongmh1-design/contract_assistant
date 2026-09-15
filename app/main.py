@@ -15,6 +15,10 @@ from app.integrations.ocr import (
 )
 from app.parsers import ContractExtractor, DeterministicContractExtractor
 from app.rules import DeterministicRuleEngine, RuleEngine, seed_default_review_rules
+from app.services.review_result_builder import (
+    DeterministicReviewResultBuilder,
+    ReviewResultBuilder,
+)
 
 
 DEFAULT_DATABASE_URL = f"sqlite:///{Path('contract_assistant.db').resolve().as_posix()}"
@@ -28,6 +32,7 @@ def create_app(
     pdf_page_renderer: PdfPageRenderer | None = None,
     contract_extractor: ContractExtractor | None = None,
     rule_engine: RuleEngine | None = None,
+    review_result_builder: ReviewResultBuilder | None = None,
 ) -> FastAPI:
     engine, session_factory = create_database(database_url)
 
@@ -49,6 +54,9 @@ def create_app(
     app.state.pdf_page_renderer = pdf_page_renderer or PyMuPdfPageRenderer()
     app.state.contract_extractor = contract_extractor or DeterministicContractExtractor()
     app.state.rule_engine = rule_engine or DeterministicRuleEngine()
+    app.state.review_result_builder = (
+        review_result_builder or DeterministicReviewResultBuilder()
+    )
     app.include_router(tasks_router)
     app.include_router(review_rules_router)
     return app

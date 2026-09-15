@@ -1,6 +1,6 @@
 # 核心领域对象设计
 
-本文同时记录长期领域对象设计和当前已落地的数据模型。当前 SQLite 已实现 `ApprovalTask`、`TaskLog`、`ApprovalAttachment`、`DocumentReadSnapshot`、`ContractParse`、`ReviewRule` 与 `RuleHit`；其余对象仍是后续阶段设计。
+本文同时记录长期领域对象设计和当前已落地的数据模型。当前 SQLite 已实现 `ApprovalTask`、`TaskLog`、`ApprovalAttachment`、`DocumentReadSnapshot`、`ContractParse`、`ReviewRule`、`RuleHit` 与 `ReviewResult`；`CommentLog` 仍是后续阶段设计。
 
 ## 1. ApprovalTask
 
@@ -158,21 +158,24 @@ OCR 不增加新表或新字段，而是继续创建 `DocumentReadSnapshot`：
 
 ## 6. ReviewResult
 
-职责：保存一次任务审查的最终汇总，用于展示和评论回写。
+职责：保存某份 ContractParse 在明确规则集合、RuleHit 集合和汇总算法版本下的不可变审查快照，用于查询和后续评论回写。
 
-建议字段：
+当前字段：
 
 - `id: int`
-- `task_id: int`
 - `contract_parse_id: int`
 - `overall_risk_level: low | medium | high`
 - `summary_text: str`
-- `focus_points_json: list[str]`
-- `comment_text: str`
-- `result_version: int`
+- `focus_points_json: list[dict]`：每项保存规则编码、名称、风险等级、说明、建议和证据。
+- `comment_text: str`：确定性中文评论草稿，不表示已经回写。
+- `review_status: completed | partial | failed`
+- `review_error: str | None`
+- `review_version: str`
+- `rule_set_fingerprint: str`：active 规则代码及显式版本的稳定 SHA-256。
+- `rule_hit_fingerprint: str`：实际 RuleHit ID、规则 ID 和版本的稳定 SHA-256。
 - `created_at: datetime`
 
-关系：属于一个任务和一次有效解析；汇总多个 `RuleHit`；被 `CommentLog` 引用。重试审查时可新增版本，旧结果保留审计。
+关系：`ContractParse 1 -> N ReviewResult`；`ReviewResult N <-> N RuleHit` 通过只有两个复合主键列的 `review_result_rule_hits` 关联表固定。ReviewResult 不冗余 `task_id`，沿 ContractParse、读取快照和附件追溯任务。相同 ContractParse、规则集合指纹、命中集合指纹和 review_version 才复用，否则新增并保留旧历史。
 
 ## 7. CommentLog
 
@@ -216,8 +219,7 @@ ApprovalTask 1 ── * ApprovalAttachment
 ApprovalAttachment 1 ── * DocumentReadSnapshot
 DocumentReadSnapshot 1 ── * ContractParse
 ContractParse 1 ── * RuleHit * ── 1 ReviewRule
-ApprovalTask 1 ── * ReviewResult
-ContractParse 1 ── * ReviewResult
+ContractParse 1 ── * ReviewResult * ── * RuleHit
 ReviewResult 1 ── * CommentLog
 ApprovalTask 1 ── * CommentLog
 ApprovalTask 1 ── * TaskLog

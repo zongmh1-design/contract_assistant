@@ -54,3 +54,8 @@ class ContractParse(Base):
         cascade="all, delete-orphan",
         order_by="RuleHit.id",
     )
+    review_results: Mapped[list["ReviewResult"]] = relationship(
+        back_populates="contract_parse",
+        cascade="all, delete-orphan",
+        order_by="ReviewResult.id",
+    )

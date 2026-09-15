@@ -73,3 +73,7 @@ class RuleHit(Base):
 
     contract_parse: Mapped["ContractParse"] = relationship(back_populates="rule_hits")
     rule: Mapped["ReviewRule"] = relationship(back_populates="hits")
+    review_results: Mapped[list["ReviewResult"]] = relationship(
+        secondary="review_result_rule_hits",
+        back_populates="rule_hits",
+    )

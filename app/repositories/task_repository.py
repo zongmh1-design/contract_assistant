@@ -50,3 +50,17 @@ class TaskRepository:
             select(TaskLog).where(TaskLog.task_id == task_id).order_by(TaskLog.id)
         )
         return list(self.session.scalars(statement))
+
+    def has_rule_review_checkpoint(
+        self, task_id: int, contract_parse_id: int, rule_set_fingerprint: str
+    ) -> bool:
+        marker = (
+            f"ContractParse: {contract_parse_id}，"
+            f"RuleSet: {rule_set_fingerprint}，"
+        )
+        statement = select(TaskLog.id).where(
+            TaskLog.task_id == task_id,
+            TaskLog.log_type.in_(["RULE_REVIEW_COMPLETED", "RULE_REVIEW_REUSED"]),
+            TaskLog.log_content.contains(marker),
+        )
+        return self.session.scalar(statement) is not None

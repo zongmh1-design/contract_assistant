@@ -26,6 +26,7 @@ from app.schemas.review import (
     RuleReviewResponse,
     RuleReviewSummary,
 )
+from app.schemas.review_result import ReviewResultRead
 
 __all__ = [
     "ApprovalAttachmentRead",
@@ -48,4 +49,5 @@ __all__ = [
     "RuleHitRead",
     "RuleReviewResponse",
     "RuleReviewSummary",
+    "ReviewResultRead",
 ]

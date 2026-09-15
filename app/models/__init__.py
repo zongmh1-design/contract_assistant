@@ -4,6 +4,7 @@ from app.models.contract_parse import ContractParse, ContractParseStatus
 from app.models.document_read_snapshot import DocumentReadSnapshot, DocumentReadStatus
 from app.models.review_rule import MatchMode, ReviewRule, RiskLevel, RuleStatus
 from app.models.rule_hit import EvidenceType, RuleHit, RuleHitStatus
+from app.models.review_result import ReviewResult, ReviewStatus, review_result_rule_hits
 
 __all__ = [
     "ApprovalAttachment",
@@ -16,6 +17,8 @@ __all__ = [
     "EvidenceType",
     "MatchMode",
     "ReviewRule",
+    "ReviewResult",
+    "ReviewStatus",
     "RiskLevel",
     "RuleHit",
     "RuleHitStatus",
@@ -23,4 +26,5 @@ __all__ = [
     "TaskLog",
     "TaskStatus",
     "WriteStatus",
+    "review_result_rule_hits",
 ]
