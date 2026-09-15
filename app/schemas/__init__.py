@@ -28,6 +28,11 @@ from app.schemas.review import (
 )
 from app.schemas.review_result import ReviewResultRead
 from app.schemas.comment import CommentLogRead, CommentWritebackResponse
+from app.schemas.llm_extraction import (
+    LlmExtractionResponse,
+    LlmExtractStatus,
+    LlmFieldCandidate,
+)
 
 __all__ = [
     "ApprovalAttachmentRead",
@@ -53,4 +58,7 @@ __all__ = [
     "RuleReviewResponse",
     "RuleReviewSummary",
     "ReviewResultRead",
+    "LlmExtractionResponse",
+    "LlmExtractStatus",
+    "LlmFieldCandidate",
 ]

@@ -78,7 +78,7 @@ class ContractExtractionService:
         except Exception as error:
             return self._save_failed_parse_and_block(task_id, document_read.id, error)
 
-        parse_status = self._status_for(extraction)
+        parse_status = self.status_for(extraction)
         with self.session.begin():
             contract_parse = repository.add(
                 ContractParse(
@@ -103,7 +103,7 @@ class ContractExtractionService:
         return contract_parse
 
     @staticmethod
-    def _status_for(
+    def status_for(
         extraction: StructuredContractExtraction,
     ) -> ContractParseStatus:
         facts = [

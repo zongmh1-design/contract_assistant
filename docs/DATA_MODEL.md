@@ -236,3 +236,17 @@ ApprovalTask 1 ── * TaskLog
 Alembic baseline `c22007620669` 包含当前全部表：`approval_tasks`、`approval_attachments`、`document_read_snapshots`、`contract_parses`、`review_rules`、`rule_hits`、`review_results`、`review_result_rule_hits`、`comment_logs`、`task_logs`。
 
 迁移直接读取与校验 SQLAlchemy `Base.metadata`，保留任务双唯一约束、附件复合唯一约束、规则编码唯一约束、命中复合唯一约束、全部外键及查询索引。`alembic_version` 是 Alembic 自身的版本记录表，不是领域对象。
+
+## 12. ContractParse 的 LLM 元数据
+
+第二份 migration `6f1f2a3c4d5e` 为 `contract_parses` 增加可空 `llm_metadata_json`。确定性历史记录保持 null；hybrid 记录保存：
+
+- `status`: success / degraded / no_unresolved_fields
+- `provider`、`model`、`llm_extractor_version`
+- `requested_fields`、`resolved_fields`
+- `token_usage`: prompt/completion/total
+- `conflicts`：LLM 与 deterministic found 不一致但被拒绝的结果
+- `validation_errors`：越界 block、证据不支持 value 等
+- 降级时的 `error_type`、`error_message`
+
+元数据不保存 API Key、请求认证头或完整 Prompt。hybrid 仍直接关联同一个 `DocumentReadSnapshot`；原 deterministic `ContractParse` 不覆盖。

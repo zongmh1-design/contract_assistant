@@ -69,6 +69,10 @@ from app.services.comment_writeback_service import (
 from app.services.current_review_result_selector import (
     CurrentReviewResultNotFoundError,
 )
+from app.services.llm_assisted_contract_extraction_service import (
+    LlmAssistedContractExtractionService,
+    LlmProviderNotConfiguredError,
+)
 from app.services.task_retry_service import RetryStageNotSupportedError, TaskRetryService
 
 
@@ -106,6 +110,7 @@ def raise_http_error(error: Exception) -> None:
             CommentWritebackError,
             CurrentReviewResultNotFoundError,
             RetryStageNotSupportedError,
+            LlmProviderNotConfiguredError,
         ),
     ):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
@@ -274,6 +279,26 @@ def parse_contract(
         InvalidTaskStateError,
         DocumentReadSnapshotNotFoundError,
     ) as error:
+        session.rollback()
+        raise_http_error(error)
+
+
+@router.post(
+    "/{task_id}/parse-contract/llm-assist", response_model=ContractParseRead
+)
+def parse_contract_with_llm(
+    task_id: int, request: Request, session: SessionDependency
+):
+    provider = request.app.state.llm_provider
+    if provider is None:
+        raise_http_error(
+            LlmProviderNotConfiguredError("LLM_PROVIDER_NOT_CONFIGURED")
+        )
+    try:
+        return LlmAssistedContractExtractionService(
+            session, provider
+        ).parse_contract(task_id)
+    except Exception as error:
         session.rollback()
         raise_http_error(error)
 

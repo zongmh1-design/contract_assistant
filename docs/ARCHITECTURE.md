@@ -279,3 +279,24 @@ python -m scripts.run_contract_demo
 ```
 
 第二次执行先走待办去重；若同一演示任务已经完成，则只查询并展示已有外键链结果，不重新下载、解析、运行规则或写评论。
+
+## 9. LLM 辅助合同事实提取
+
+```text
+POST /api/tasks/{task_id}/parse-contract/llm-assist
+  -> LlmAssistedContractExtractionService
+      -> ContractExtractionService + DeterministicContractExtractor
+         保存或复用原 deterministic ContractParse
+      -> DocumentSourceSelector
+      -> LlmContractExtractor
+         只选择 not_found / ambiguous 字段
+         -> LLMProvider.generate_structured
+            -> OpenAICompatibleLLMProvider / MockLLMProvider
+         -> 校验 block 范围和 value 是否存在于重建证据
+         -> deterministic found 优先合并
+      -> 新增 hybrid ContractParse + llm_metadata_json
+```
+
+Provider 负责 HTTP、timeout、响应 JSON/Schema、模型名和 token usage；Extractor 负责提示边界、证据验证和合并；Service 负责编排、历史复用、日志与降级。模型不返回可信页码，最终 `source_text` 和 page/block 位置只能由程序从 `DocumentReadSnapshot.blocks_json` 重建。
+
+Provider 或结构化响应失败时仍保存复制确定性结果的 partial hybrid 记录，并写 `LLM_EXTRACTION_DEGRADED`；任务保持 parsing。确定性核心提取失败才沿原逻辑 blocked。

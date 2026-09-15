@@ -66,6 +66,7 @@ class ContractParseRead(BaseModel):
     parse_error: str | None
     extractor_name: str
     extractor_version: str
+    llm_metadata_json: dict | None
     created_at: datetime
 
     @field_validator("created_at")

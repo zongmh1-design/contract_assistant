@@ -6,6 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.16,<2.0",
     "fastapi>=0.116,<1.0",
+    "httpx>=0.28,<1.0",
     "onnxruntime>=1.22,<2.0",
     "pydantic>=2.11,<3.0",
     "pymupdf>=1.26,<2.0",
@@ -18,7 +19,6 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "httpx>=0.28,<1.0",
     "pytest>=8.4,<9.0",
     "reportlab>=4.4,<5.0",
 ]

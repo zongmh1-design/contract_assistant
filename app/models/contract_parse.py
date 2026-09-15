@@ -42,6 +42,7 @@ class ContractParse(Base):
     parse_error: Mapped[str | None] = mapped_column(Text)
     extractor_name: Mapped[str] = mapped_column(String(100), nullable=False)
     extractor_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    llm_metadata_json: Mapped[dict | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, nullable=False
     )

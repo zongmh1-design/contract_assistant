@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-阶段 10：数据库迁移 + 可重复完整演示 —— 已完成。
+阶段 11：LLM 辅助字段 / 条款提取 —— 已完成。
 
 ## 本阶段已完成
 
@@ -73,6 +73,14 @@
 - 新增一键完整 Demo，真实调用已有 Service 完成待办、附件、读取、提取、规则、结果和 Mock 评论回写，最终为 `done + success`。
 - Demo 使用独立数据库，`--reset` 只允许清理该精确文件；不 reset 的重复执行会复用既有结果，不重复评论。
 - 新增迁移、约束、外键、seed、正式启动无副作用和 Demo 重复执行测试。
+- 新增 `LLMProvider` 协议、OpenAI-compatible HTTP Provider 和确定性 `MockLLMProvider`；Provider 统一处理超时、HTTP/响应校验、模型名和 token usage。
+- 新增 `LlmContractExtractor`，只请求 deterministic 的 not_found/ambiguous 字段，并把编号 blocks 与确定性上下文发送给模型。
+- 模型只返回 value/status/block 范围；最终证据原文和页码由程序从快照重建，越界或原文不支持的值不能保存为 found。
+- 合并时 deterministic found 永远优先；LLM 越权返回不同值只记录 `LLM_EXTRACTION_CONFLICT`。
+- 新增 hybrid 提取 Service 和 API，先保存/复用 deterministic 记录，再新增 hybrid ContractParse；Provider/Schema 失败保存降级结果而不 blocked。
+- `ContractParse.llm_metadata_json` 保存 provider、model、token usage、请求/补充字段、冲突、证据错误和降级信息，不保存密钥或认证头。
+- 新增第二份 Alembic migration，不修改已提交 baseline。
+- 新增 17 个 LLM 辅助测试，覆盖补充、歧义、证据位置、幻觉拒绝、冲突优先级、超时/Provider/JSON/Schema 降级、降级后恢复、历史、复用、Provider 变化、migration、未配置边界和真实 HTTP 适配器边界。
 
 ## API
 
@@ -91,6 +99,7 @@
 | GET | `/api/tasks/{task_id}/document-reads` | 查询任务下所有文档读取快照 |
 | POST | `/api/tasks/{task_id}/ocr` | 对明确需要 OCR 的主合同执行或复用 OCR |
 | POST | `/api/tasks/{task_id}/parse-contract` | 提取或复用合同结构化事实 |
+| POST | `/api/tasks/{task_id}/parse-contract/llm-assist` | 只补充 unresolved 字段并保存 hybrid ContractParse |
 | GET | `/api/tasks/{task_id}/contract-parses` | 查询任务下的 ContractParse 历史 |
 | POST | `/api/tasks/{task_id}/run-rules` | 执行确定性规则并返回命中及临时风险汇总 |
 | GET | `/api/tasks/{task_id}/rule-hits` | 查询任务下可追溯的规则命中历史 |
@@ -108,11 +117,11 @@
 uv --cache-dir .uv-cache --python-preference only-system run pytest -q --basetemp=.test-tmp
 ```
 
-结果：139 个测试全部通过，0 个失败。本阶段新增 4 个聚合验收测试，覆盖空库 migration、全部表、唯一约束、外键、seed 幂等且不覆盖人工配置、正式启动不自动建表、完整 Demo 首次运行及第二次复用。测试客户端依赖产生 2 条弃用警告，不影响本阶段结果。
+结果：156 个测试全部通过，0 个失败。本阶段新增 17 个 LLM 辅助测试，覆盖 unresolved 选择、补充、证据重建、幻觉拒绝、确定性冲突优先、四类辅助失败降级、降级后恢复、历史与复用、Provider/模型版本变化、第二份 migration、未配置 Provider 和 HTTP 适配器边界。原 Demo 和此前全部测试继续通过。测试客户端依赖产生 2 条弃用警告，不影响本阶段结果。
 
 ## 当前没有实现
 
-- LLM 与复杂语义风险规则
+- LLM 语义风险规则；当前 LLM 只辅助字段/条款提取
 - 真实审批平台；当前评论回写使用 Mock Approval Gateway
 - 真实审批系统接口
 - 前端
@@ -120,6 +129,6 @@ uv --cache-dir .uv-cache --python-preference only-system run pytest -q --basetem
 
 ## 下一阶段建议（尚未开始）
 
-下一阶段建议先设计 LLM 辅助字段/条款提取边界，让 LLM 只补充确定性提取缺失项并继续输出现有证据结构；需要确认后再编码。
+下一阶段可以设计 LLM 语义风险规则，但必须继续保存规则、原文证据和位置，并与当前确定性 RuleEngine 分开；需要确认后再编码。
 
 设计债务：comment_writeback 已支持精确恢复；document_reading 通过专用读取/OCR 接口恢复。field_extraction 与 reviewing 仍缺少按具体错误码分派的恢复入口，当前 `/retry` 会明确拒绝，不伪装支持。

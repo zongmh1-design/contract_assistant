@@ -351,3 +351,37 @@
 - 决定：默认使用 `demo_contract_assistant.db`；`--reset` 只允许删除这一精确文件。首次执行真实调用全部 Service，重复执行使用业务去重和已持久化结果展示同一闭环。
 - 原因：既能演示从空库开始，也能验证任务、规则和评论幂等。
 - 缺点：完成任务不会被强行倒退重跑；需要展示首次处理时使用 `--reset`。
+
+## D-045：LLM 只补 unresolved，确定性 found 永不覆盖
+
+- 问题：让 LLM 重做全部字段会增加费用，并可能把明确正则结果替换成幻觉值。
+- 方案：全文全部重抽；逐字段覆盖；只请求 not_found/ambiguous 并以确定性 found 为最高优先级。
+- 决定：Prompt 只列 unresolved 字段；即使 Provider 越权返回 found 字段，也只记录冲突并保留确定性值。
+- 原因：可解释、低成本，并让 LLM 保持辅助组件定位。
+- 缺点：确定性规则误判为 found 时，LLM 本阶段不能纠正，需要人工或未来显式复核机制。
+
+## D-046：LLM 证据由程序按 block 重建
+
+- 问题：模型返回的 evidence_text 和页码可能并不存在于原文。
+- 方案：直接信任模型；全文模糊搜索；模型只返回 block 范围，程序验证并重建。
+- 决定：模型仅给 value、status、block_start/end；系统校验连续 block、从快照生成 source_text/page 范围，并要求规范化 value 存在于证据。
+- 原因：ContractParse 的证据可以追溯到不可变读取快照，阻止无原文支持的 found 落库。
+- 缺点：中文数字转阿拉伯数字等语义等价值暂时无法通过严格包含校验，会保守地标记 ambiguous。
+
+## D-047：LLM 辅助失败降级而不 blocked
+
+- 问题：外部模型超时、HTTP 错误或 Schema 失败是否应阻断合同审查。
+- 方案：一律 blocked；丢弃 LLM 调用；保存 hybrid 降级记录并继续。
+- 决定：确定性提取已完成时，保留其结果，新增 `status=degraded` 的 hybrid ContractParse 和 TaskLog，任务保持 parsing。
+- 原因：辅助 API 不应降低已有确定性闭环的可用性，同时失败元数据可审计。
+- 缺点：下游必须认识 partial 结果和能力边界，不能把降级结果宣传为 LLM 已完成补充。
+
+降级 hybrid 记录保留历史，但不作为可复用成功结果；同 Provider/模型恢复后允许再次调用并新增记录。成功或正常 partial hybrid 才按版本复用。
+
+## D-048：Provider 使用简单 OpenAI-compatible HTTP 边界
+
+- 问题：业务代码不应绑定具体模型 SDK，但仍需一个可替换的真实调用实现。
+- 方案：官方单厂商 SDK；标准库 urllib；LLMProvider + httpx 的兼容 HTTP Provider。
+- 决定：Provider 协议统一结构化生成；真实实现只负责兼容 Chat Completions JSON Schema 的 HTTP 调用，Mock 用于默认测试。
+- 原因：httpx 已用于项目测试，提升为运行依赖即可获得清晰 timeout/HTTP 错误；无需引入更重的厂商 SDK。
+- 缺点：不同厂商的 JSON Schema 兼容细节仍需接入时做少量适配；当前没有默认 API Key 或联网 smoke test。

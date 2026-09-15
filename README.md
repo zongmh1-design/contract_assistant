@@ -28,7 +28,7 @@ Mock 待办 -> 主合同附件 -> PDF/DOCX 读取或 OCR
 - 企业审批详情和附件下载
 - 企业审批评论回写
 
-项目尚未接入真实企业 OA，也没有 LLM、前端或异步任务队列。
+项目尚未接入真实企业 OA、前端或异步任务队列。当前已提供可选的 OpenAI-compatible LLM 信息抽取 Provider，但默认未配置模型和 API Key，也不执行 LLM 风险审查。
 
 ## 技术栈
 
@@ -36,6 +36,7 @@ Mock 待办 -> 主合同附件 -> PDF/DOCX 读取或 OCR
 - SQLAlchemy 2.x、Alembic、SQLite
 - pypdf、python-docx
 - RapidOCR、ONNX Runtime CPU、PyMuPDF
+- OpenAI-compatible HTTP Provider（可选，仅辅助字段/条款提取）
 - pytest、uv
 
 ## 目录结构
@@ -116,6 +117,7 @@ uv run pytest -q --basetemp=.test-tmp
 | POST | `/api/tasks/{task_id}/read-document` | 读取 PDF/DOCX/图片路由结果 |
 | POST | `/api/tasks/{task_id}/ocr` | 对需要 OCR 的附件执行 OCR |
 | POST | `/api/tasks/{task_id}/parse-contract` | 提取字段和条款 |
+| POST | `/api/tasks/{task_id}/parse-contract/llm-assist` | 用 LLM 补充 unresolved 字段并保存 hybrid 解析 |
 | POST | `/api/tasks/{task_id}/run-rules` | 执行确定性规则 |
 | POST | `/api/tasks/{task_id}/review-results` | 生成风险结果快照 |
 | POST | `/api/tasks/{task_id}/write-comment` | Mock 写回审批评论并完成任务 |
@@ -126,7 +128,8 @@ uv run pytest -q --basetemp=.test-tmp
 ## 当前限制
 
 - 只支持 PDF、DOCX、JPG、JPEG、PNG；不支持旧版 DOC 和压缩包。
-- 字段、条款和风险判断是可解释的确定性规则，无法覆盖复杂语义。
+- 字段/条款可由 LLM 辅助补缺，但必须通过原文 block 证据校验；风险判断仍只有确定性规则。
+- 默认应用未配置 LLM Provider；调用辅助接口前需要在部署代码中显式注入 Provider 和凭据。
 - OCR 同步运行，长文档可能耗时较长。
 - 当前数据库基线面向 SQLite 验证；切换生产数据库前需单独验证方言和并发策略。
 - 所有审批平台行为仍是 Mock，不应表述为已接入真实 OA。
