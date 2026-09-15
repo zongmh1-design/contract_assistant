@@ -33,14 +33,19 @@ def create_app(
     contract_extractor: ContractExtractor | None = None,
     rule_engine: RuleEngine | None = None,
     review_result_builder: ReviewResultBuilder | None = None,
+    create_schema: bool = False,
+    seed_rules: bool = False,
 ) -> FastAPI:
     engine, session_factory = create_database(database_url)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
-        create_tables(engine)
-        with session_factory.begin() as session:
-            seed_default_review_rules(session)
+        # 正式运行由 Alembic 和独立 seed 命令初始化；测试可显式开启快速建库。
+        if create_schema:
+            create_tables(engine)
+        if seed_rules:
+            with session_factory.begin() as session:
+                seed_default_review_rules(session)
         yield
         engine.dispose()
 

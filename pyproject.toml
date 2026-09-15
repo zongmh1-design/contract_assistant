@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "合同审批审查系统"
 requires-python = ">=3.12"
 dependencies = [
+    "alembic>=1.16,<2.0",
     "fastapi>=0.116,<1.0",
     "onnxruntime>=1.22,<2.0",
     "pydantic>=2.11,<3.0",

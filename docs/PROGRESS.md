@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-阶段 9：CommentLog + 审批评论回写最小闭环 —— 已完成。
+阶段 10：数据库迁移 + 可重复完整演示 —— 已完成。
 
 ## 本阶段已完成
 
@@ -66,6 +66,13 @@
 - 相同 ReviewResult 已有成功 CommentLog 时直接复用，不再次调用 Gateway，并记录 `COMMENT_WRITE_REUSED`。
 - `/retry` 新增 blocked_stage 最小分派：comment_writeback 只恢复 reviewing 并重试评论；document_reading 指向专用接口；field_extraction/reviewing 明确拒绝，不再全部重跑附件。
 - 新增 Mock 全业务闭环测试，从待办、附件、文档读取、ContractParse、规则、ReviewResult 到评论写回，最终 task=done、write_status=success，并验证七类数据外键追溯。
+- 引入 Alembic，并创建覆盖当前 10 张业务/关联表、唯一约束、外键和索引的 baseline migration。
+- 正式 FastAPI 启动不再自动 `create_all()` 或 seed；测试仍通过显式开关使用隔离数据库快速建表。
+- 新增独立、幂等的默认规则 seed 命令，只补缺失 `rule_code`，不覆盖人工配置。
+- 新增虚构中文文本型 PDF 演示合同，已验证四页可视布局和 pypdf 中文文本提取。
+- 新增一键完整 Demo，真实调用已有 Service 完成待办、附件、读取、提取、规则、结果和 Mock 评论回写，最终为 `done + success`。
+- Demo 使用独立数据库，`--reset` 只允许清理该精确文件；不 reset 的重复执行会复用既有结果，不重复评论。
+- 新增迁移、约束、外键、seed、正式启动无副作用和 Demo 重复执行测试。
 
 ## API
 
@@ -101,7 +108,7 @@
 uv --cache-dir .uv-cache --python-preference only-system run pytest -q --basetemp=.test-tmp
 ```
 
-结果：135 个测试全部通过，0 个失败。评论回写阶段新增 18 个测试，覆盖成功状态、CommentLog、外部评论 ID、接口异常、无效响应、专用 retry、无重复下载/OCR/解析/规则、成功幂等、失败重试、前置条件、日志、非评论阶段重试边界和完整业务闭环。测试客户端依赖产生 2 条弃用警告，不影响本阶段结果。
+结果：139 个测试全部通过，0 个失败。本阶段新增 4 个聚合验收测试，覆盖空库 migration、全部表、唯一约束、外键、seed 幂等且不覆盖人工配置、正式启动不自动建表、完整 Demo 首次运行及第二次复用。测试客户端依赖产生 2 条弃用警告，不影响本阶段结果。
 
 ## 当前没有实现
 
@@ -109,10 +116,10 @@ uv --cache-dir .uv-cache --python-preference only-system run pytest -q --basetem
 - 真实审批平台；当前评论回写使用 Mock Approval Gateway
 - 真实审批系统接口
 - 前端
-- 数据库迁移脚本；当前由 SQLAlchemy 模型创建本地 SQLite 表
+- 生产级数据库方言与并发部署验证；当前 migration 和 Demo 以 SQLite 为验收环境
 
 ## 下一阶段建议（尚未开始）
 
-下一阶段可选择 LLM 辅助字段/条款提取、LLM 语义风险规则、数据库迁移，或完整演示与部署。建议优先补数据库迁移和演示脚本，使当前已闭环的数据模型能够安全演进并方便完整展示；需要确认后再编码。
+下一阶段建议先设计 LLM 辅助字段/条款提取边界，让 LLM 只补充确定性提取缺失项并继续输出现有证据结构；需要确认后再编码。
 
 设计债务：comment_writeback 已支持精确恢复；document_reading 通过专用读取/OCR 接口恢复。field_extraction 与 reviewing 仍缺少按具体错误码分派的恢复入口，当前 `/retry` 会明确拒绝，不伪装支持。

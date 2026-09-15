@@ -14,6 +14,8 @@ def client(tmp_path) -> Iterator[TestClient]:
         database_url=f"sqlite:///{database_path}",
         approval_gateway=MockApprovalGateway(),
         contract_storage_root=tmp_path / "storage" / "contracts",
+        create_schema=True,
+        seed_rules=True,
     )
     with TestClient(app) as test_client:
         yield test_client

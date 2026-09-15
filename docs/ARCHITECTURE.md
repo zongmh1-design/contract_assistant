@@ -257,3 +257,25 @@ contract_assistant/
 | ReportLab（仅开发依赖） | 生成确定性的单页、多页和空文本 PDF 测试夹具 | 测试文件可重复生成，不依赖私人文件 | 提交手工制作 PDF，但来源和重建过程不透明 |
 
 暂不建议加入任务队列、Redis、工作流框架和容器编排。单进程顺序执行已经能表达第一版业务；需要后台并发或多实例抢占时再重新评估。
+
+## 8. 数据库迁移与演示入口
+
+正式运行路径为 `alembic upgrade head -> seed_review_rules -> FastAPI`。`app.main:app` 不再隐式执行 `create_all()` 或 seed，避免应用启动悄悄改变正式数据库。测试通过 `create_app(create_schema=True, seed_rules=True)` 显式启用快速隔离建库。
+
+完整演示调用链：
+
+```text
+python -m scripts.run_contract_demo
+  -> Alembic upgrade head
+  -> seed_default_review_rules
+  -> ApprovalSyncService
+  -> AttachmentPreparationService
+  -> DocumentReadingService（演示 PDF 为文本型，不走 OCR）
+  -> ContractExtractionService
+  -> ContractReviewService
+  -> ReviewResultService
+  -> CommentWritebackService
+  -> done + write_status=success
+```
+
+第二次执行先走待办去重；若同一演示任务已经完成，则只查询并展示已有外键链结果，不重新下载、解析、运行规则或写评论。

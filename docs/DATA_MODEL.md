@@ -230,3 +230,9 @@ ApprovalTask 1 ── * TaskLog
 - 数据库产品和实际列类型留到数据库设计阶段确认。
 - JSON 字段是否拆表，等样例解析结果稳定后再判断；第一版优先保持简单。
 - 多附件合并审查策略尚未确定。第一版建议明确“一个主合同附件”，其他附件是否参与审查需用户确认后再设计。
+
+## 11. Schema 迁移基线
+
+Alembic baseline `c22007620669` 包含当前全部表：`approval_tasks`、`approval_attachments`、`document_read_snapshots`、`contract_parses`、`review_rules`、`rule_hits`、`review_results`、`review_result_rule_hits`、`comment_logs`、`task_logs`。
+
+迁移直接读取与校验 SQLAlchemy `Base.metadata`，保留任务双唯一约束、附件复合唯一约束、规则编码唯一约束、命中复合唯一约束、全部外键及查询索引。`alembic_version` 是 Alembic 自身的版本记录表，不是领域对象。
