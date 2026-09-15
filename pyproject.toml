@@ -1,0 +1,22 @@
+[project]
+name = "contract-assistant"
+version = "0.1.0"
+description = "合同审批审查系统"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.116,<1.0",
+    "pydantic>=2.11,<3.0",
+    "sqlalchemy>=2.0,<3.0",
+    "uvicorn>=0.35,<1.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28,<1.0",
+    "pytest>=8.4,<9.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-p no:cacheprovider"

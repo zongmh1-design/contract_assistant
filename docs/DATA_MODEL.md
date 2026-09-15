@@ -1,0 +1,194 @@
+# 核心领域对象设计
+
+本阶段只定义建议字段、关系和职责，不创建数据库。字段类型为概念类型，实际 ORM 类型和索引在数据库设计阶段确认。
+
+## 1. ApprovalTask
+
+职责：表示一个审批实例在本系统中的唯一处理任务，承担去重、主状态、阻塞信息和重试检查点。
+
+建议字段：
+
+- `id: int`：内部主键。
+- `approval_code: str`：审批编号，用于展示。
+- `instance_id: str`：审批平台唯一业务标识，建议唯一约束，作为去重依据。
+- `approval_title: str`
+- `applicant_name: str`
+- `applied_at: datetime | None`
+- `task_status: pending | parsing | reviewing | blocked | done`
+- `write_status: not_written | writing | success | failed`
+- `blocked_stage: str | None`：失败发生的业务步骤。
+- `blocked_reason: str | None`：可读的失败原因，不只保存异常类名。
+- `retry_target: parsing | reviewing | None`：人工重试应回到的状态。
+- `retry_count: int`
+- `created_at: datetime`
+- `updated_at: datetime`
+
+关系：一个任务有多个附件、解析记录、规则命中、评论日志和任务日志；通常只有一个当前有效审查结果。
+
+## 2. ApprovalAttachment
+
+职责：保存已识别主合同附件的来源标识、下载结果和文件校验信息。本阶段已经实现该对象。
+
+建议字段：
+
+- `id: int`
+- `task_id: int`
+- `external_attachment_id: str`
+- `original_file_name: str`：审批系统返回的原始文件名，用于展示和审计。
+- `file_type: str`
+- `file_size: int | None`
+- `file_path: str | None`
+- `sha256: str | None`
+- `is_main_contract: bool`
+- `download_status: pending | success | failed`
+- `download_error: str | None`
+- `created_at: datetime`
+- `updated_at: datetime`
+
+关系：属于一个 `ApprovalTask`；以后可被一个或多个 `ContractParse` 记录引用。数据库以 `task_id + external_attachment_id` 建立复合唯一约束，避免重复附件记录。
+
+## 3. ContractParse
+
+职责：保存一次合同解析的结果、来源附件、解析状态和失败原因；保留结构化值及其证据，而非只保存最终值。
+
+建议字段：
+
+- `id: int`
+- `task_id: int`
+- `attachment_id: int`
+- `parse_status: pending | success | failed`
+- `document_text_path: str | None`：完整文本单独保存时的受控路径，避免把大文本塞进任务表。
+- `basic_info_json: object`：合同标题、编号、主体、对方、金额、币种、生效/到期时间。
+- `clause_info_json: object`：付款、交付、验收、违约、保密、数据、知识产权、争议解决条款。
+- `parse_error: str | None`
+- `parser_version: str`
+- `created_at: datetime`
+
+`basic_info_json` 和 `clause_info_json` 中每个重要字段统一保存：
+
+```json
+{
+  "value": null,
+  "source_text": null,
+  "position": null,
+  "extract_status": "missing"
+}
+```
+
+`extract_status` 建议使用 `extracted`、`missing`、`uncertain`、`failed`。`position` 第一版统一为可读字符串，例如 `page:3` 或 `paragraph:18`，待解析方案确认后再决定是否结构化。
+
+关系：属于一个任务和一个附件；一个任务可保留多次解析记录，以便重试审计，但只有一条当前有效结果进入审查。
+
+## 4. ReviewRule
+
+职责：定义一条可启停、可解释的审查规则。
+
+建议字段：
+
+- `id: int`
+- `rule_code: str`：稳定且唯一的规则编码。
+- `rule_name: str`
+- `risk_level: low | medium | high`
+- `rule_status: enabled | disabled`
+- `match_mode: deterministic | llm_assisted`
+- `match_text: str`：匹配条件或规则参数的可读表示。
+- `suggestion_text: str`
+- `rule_version: int`
+- `created_at: datetime`
+- `updated_at: datetime`
+
+关系：一条规则可产生多个 `RuleHit`。第一版优先实现 `deterministic`，`llm_assisted` 仅预留枚举，不在本阶段实现。
+
+## 5. RuleHit
+
+职责：记录某任务为什么命中某规则，以及证据来自合同哪里。
+
+建议字段：
+
+- `id: int`
+- `task_id: int`
+- `contract_parse_id: int`
+- `rule_id: int`
+- `rule_code_snapshot: str`
+- `rule_name_snapshot: str`
+- `risk_level: low | medium | high`
+- `evidence_text: str`
+- `evidence_position: str | None`
+- `suggestion_text: str`
+- `hit_status: hit | not_hit | error`
+- `created_at: datetime`
+
+保存规则名称、编码等快照，避免规则以后修改导致历史审查结果无法解释。通常只持久化 `hit` 和 `error`；是否保存全部 `not_hit` 在规则引擎设计阶段决定。
+
+## 6. ReviewResult
+
+职责：保存一次任务审查的最终汇总，用于展示和评论回写。
+
+建议字段：
+
+- `id: int`
+- `task_id: int`
+- `contract_parse_id: int`
+- `overall_risk_level: low | medium | high`
+- `summary_text: str`
+- `focus_points_json: list[str]`
+- `comment_text: str`
+- `result_version: int`
+- `created_at: datetime`
+
+关系：属于一个任务和一次有效解析；汇总多个 `RuleHit`；被 `CommentLog` 引用。重试审查时可新增版本，旧结果保留审计。
+
+## 7. CommentLog
+
+职责：记录每一次评论回写尝试、结果和外部响应，不把回写成败只压缩在任务表中。
+
+建议字段：
+
+- `id: int`
+- `task_id: int`
+- `review_result_id: int`
+- `write_status: writing | success | failed`
+- `request_id: str | None`：本次调用标识，便于排查和幂等控制。
+- `write_response_text: str | None`：脱敏后的平台响应。
+- `error_message: str | None`
+- `created_at: datetime`
+- `finished_at: datetime | None`
+
+关系：属于一个任务和一个审查结果。`ApprovalTask.write_status` 是当前状态，`CommentLog` 是完整尝试历史。
+
+## 8. TaskLog
+
+职责：记录任务全链路中的关键业务事件、状态变化和错误，支持人工定位和面试讲解。
+
+建议字段：
+
+- `id: int`
+- `task_id: int`
+- `log_level: info | warning | error`
+- `log_type: status_change | external_call | parse | rule | persistence | comment`
+- `stage: str`
+- `log_content: str`
+- `error_code: str | None`
+- `created_at: datetime`
+
+关系：属于一个任务。日志不得保存密钥、完整认证头或未脱敏的外部响应。
+
+## 9. 对象关系总览
+
+```text
+ApprovalTask 1 ── * ApprovalAttachment
+ApprovalTask 1 ── * ContractParse * ── 1 ApprovalAttachment
+ApprovalTask 1 ── * RuleHit       * ── 1 ReviewRule
+ContractParse 1 ── * RuleHit
+ApprovalTask 1 ── * ReviewResult
+ContractParse 1 ── * ReviewResult
+ReviewResult 1 ── * CommentLog
+ApprovalTask 1 ── * CommentLog
+ApprovalTask 1 ── * TaskLog
+```
+
+## 10. 暂缓决定
+
+- 数据库产品和实际列类型留到数据库设计阶段确认。
+- JSON 字段是否拆表，等样例解析结果稳定后再判断；第一版优先保持简单。
+- 多附件合并审查策略尚未确定。第一版建议明确“一个主合同附件”，其他附件是否参与审查需用户确认后再设计。
