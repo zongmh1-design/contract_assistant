@@ -6,6 +6,8 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.116,<1.0",
     "pydantic>=2.11,<3.0",
+    "pypdf>=6.0,<7.0",
+    "python-docx>=1.2,<2.0",
     "sqlalchemy>=2.0,<3.0",
     "uvicorn>=0.35,<1.0",
 ]
@@ -14,6 +16,7 @@ dependencies = [
 dev = [
     "httpx>=0.28,<1.0",
     "pytest>=8.4,<9.0",
+    "reportlab>=4.4,<5.0",
 ]
 
 [tool.pytest.ini_options]

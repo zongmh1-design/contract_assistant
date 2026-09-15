@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import ApprovalAttachment
+from app.models import ApprovalAttachment, DownloadStatus
 
 
 class AttachmentRepository:
@@ -24,6 +24,20 @@ class AttachmentRepository:
             .order_by(ApprovalAttachment.id)
         )
         return list(self.session.scalars(statement))
+
+    def get_main_downloaded_attachment(
+        self, task_id: int
+    ) -> ApprovalAttachment | None:
+        statement = (
+            select(ApprovalAttachment)
+            .where(
+                ApprovalAttachment.task_id == task_id,
+                ApprovalAttachment.is_main_contract.is_(True),
+                ApprovalAttachment.download_status == DownloadStatus.SUCCESS,
+            )
+            .order_by(ApprovalAttachment.id)
+        )
+        return self.session.scalar(statement)
 
     def add(self, attachment: ApprovalAttachment) -> ApprovalAttachment:
         self.session.add(attachment)

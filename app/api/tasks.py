@@ -13,6 +13,7 @@ from app.schemas import (
     ApprovalAttachmentRead,
     ApprovalTaskRead,
     AttachmentPreparationResponse,
+    DocumentReadResult,
     SyncTasksResponse,
     TaskLogRead,
 )
@@ -28,6 +29,7 @@ from app.services.mock_failure_service import (
     MockFailureNotConfiguredError,
     MockFailureService,
 )
+from app.services.document_reading_service import DocumentReadingService
 from app.services.task_state_service import TaskNotFoundError, TaskStateService
 
 
@@ -182,6 +184,15 @@ def list_task_attachments(
     if TaskRepository(session).get_task(task_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
     return AttachmentRepository(session).list_for_task(task_id)
+
+
+@router.post("/{task_id}/read-document", response_model=DocumentReadResult)
+def read_document(task_id: int, session: SessionDependency) -> DocumentReadResult:
+    try:
+        return DocumentReadingService(session).read_main_document(task_id)
+    except (TaskNotFoundError, InvalidTaskStateError) as error:
+        session.rollback()
+        raise_http_error(error)
 
 
 @router.get("/{task_id}/logs", response_model=list[TaskLogRead])

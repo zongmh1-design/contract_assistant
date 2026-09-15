@@ -1,3 +1,8 @@
+from app.schemas.document import (
+    DocumentReadResult,
+    DocumentReadStatus,
+    DocumentTextBlock,
+)
 from app.schemas.task import (
     ApprovalAttachmentRead,
     ApprovalTaskRead,
@@ -12,4 +17,7 @@ __all__ = [
     "AttachmentPreparationResponse",
     "SyncTasksResponse",
     "TaskLogRead",
+    "DocumentReadResult",
+    "DocumentReadStatus",
+    "DocumentTextBlock",
 ]
