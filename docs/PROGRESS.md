@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-阶段 5：OCR 最小闭环 —— 已完成。
+阶段 6：ContractParse + 合同字段/条款提取基础闭环 —— 已完成。
 
 ## 本阶段已完成
 
@@ -35,6 +35,14 @@
 - 相同附件 SHA-256、OCR 版本和成功 OCR 快照直接复用并记录 `DOCUMENT_OCR_REUSED`；SHA 或版本变化会重新执行。
 - 新增 `POST /api/tasks/{task_id}/ocr`。文档读取阻塞任务可直接 `blocked -> parsing -> OCR`，不重新下载附件。
 - 正常文本型 PDF 调用 OCR 会返回 `OCR_NOT_REQUIRED`；OCR 引擎、空结果、不支持类型、输入文件和 PDF 渲染错误均明确处理。
+- 新增 `DocumentSourceSelector`，集中选择当前主附件、当前 SHA-256 下最新成功读取快照，旧文件快照不会被使用。
+- 新增 `ContractParse`，直接外键关联 `DocumentReadSnapshot`，保存基本字段、主要条款、证据、状态及 Extractor 名称/版本。
+- 新增统一 `ContractExtractor`、确定性实现和 Mock。当前使用正则、标签、条款标题及 block 顺序，不调用 LLM。
+- 基本字段覆盖标题、编号、甲乙方、金额、币种、生效日期和到期日期；条款覆盖付款、交付、验收、违约、保密、数据、知识产权和争议解决。
+- 每个事实保存 value、source_text、block/page 范围、extract_status 和 extract_method；DOCX 页码保持 null。
+- 全部事实 found 时解析为 success；正常完成但存在 not_found/ambiguous/failed 字段时为 partial；Extractor 程序异常才为 failed 并阻塞于 field_extraction。
+- 相同读取快照和 Extractor 名称/版本的 success/partial 结果直接复用；快照或版本变化新增解析记录并保留旧历史。
+- 新增虚构中文合同文本与中文扫描 PDF；真实 RapidOCR 成功识别合同、编号、甲乙方、人民币金额和付款关键词。
 
 ## API
 
@@ -52,6 +60,8 @@
 | POST | `/api/tasks/{task_id}/read-document` | 路由 Reader，返回文本和基础位置 |
 | GET | `/api/tasks/{task_id}/document-reads` | 查询任务下所有文档读取快照 |
 | POST | `/api/tasks/{task_id}/ocr` | 对明确需要 OCR 的主合同执行或复用 OCR |
+| POST | `/api/tasks/{task_id}/parse-contract` | 提取或复用合同结构化事实 |
+| GET | `/api/tasks/{task_id}/contract-parses` | 查询任务下的 ContractParse 历史 |
 
 ## 测试结果
 
@@ -61,11 +71,10 @@
 uv --cache-dir .uv-cache --python-preference only-system run pytest -q --basetemp=.test-tmp
 ```
 
-结果：59 个测试全部通过，0 个失败。OCR 新增 15 个测试实例，覆盖 JPG/PNG、扫描 PDF 多页与顺序、快照保留、空结果、引擎异常、渲染失败、输入丢失、不支持类型、SHA/Provider 版本失效、成功复用、正常文本拒绝、专用恢复不下载附件、日志及真实 RapidOCR smoke。测试客户端依赖产生 2 条弃用警告，不影响本阶段结果。
+结果：73 个测试全部通过，0 个失败。结构化提取新增 14 个测试，覆盖当前快照选择、旧 SHA 排除、八项基本字段、八类条款、跨 block/page 证据、DOCX null 页码、缺失/歧义/字段失败、系统异常 blocked、无快照 blocked、持久化查询、快照及 Extractor 版本变化历史、复用及真实中文 RapidOCR smoke。测试客户端依赖产生 2 条弃用警告，不影响本阶段结果。
 
 ## 当前没有实现
 
-- 字段/条款提取及 `ContractParse`
 - 合同规则、LLM、`ReviewRule`、`RuleHit`、`ReviewResult`
 - 评论生成、评论回写及 `CommentLog`
 - 真实审批系统接口
@@ -74,6 +83,6 @@ uv --cache-dir .uv-cache --python-preference only-system run pytest -q --basetem
 
 ## 下一阶段建议（尚未开始）
 
-下一阶段建议只设计 `ContractParse + 字段/条款提取` 的数据边界、输入快照选择、证据结构和确定性提取范围。需要确认后再编码，当前不自动进入。
+下一阶段可选择先设计“LLM 辅助补充缺失/歧义字段”，或优先设计确定性的 `ReviewRule + RuleHit`。建议先做规则闭环，因为当前结构化事实已经足以支持可解释的缺失项与数值规则；需要确认后再编码。
 
 设计债务：当前 retry 始终执行 `blocked -> parsing -> 重新准备附件`。后续失败点扩展到 `document_reading`、`field_extraction`、`reviewing`、`comment_writeback` 后，需要按 `blocked_stage` 从正确检查点恢复；本阶段未提前实现复杂恢复引擎。

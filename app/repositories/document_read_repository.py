@@ -65,6 +65,20 @@ class DocumentReadRepository:
         )
         return self.session.scalar(statement)
 
+    def get_latest_success_for_attachment(
+        self, attachment_id: int, file_sha256: str
+    ) -> DocumentReadSnapshot | None:
+        statement = (
+            select(DocumentReadSnapshot)
+            .where(
+                DocumentReadSnapshot.attachment_id == attachment_id,
+                DocumentReadSnapshot.file_sha256 == file_sha256,
+                DocumentReadSnapshot.read_status == DocumentReadStatus.SUCCESS,
+            )
+            .order_by(DocumentReadSnapshot.id.desc())
+        )
+        return self.session.scalar(statement)
+
     def list_for_task(self, task_id: int) -> list[DocumentReadSnapshot]:
         statement = (
             select(DocumentReadSnapshot)

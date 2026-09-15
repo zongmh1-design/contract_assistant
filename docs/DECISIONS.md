@@ -175,3 +175,43 @@
 - 决定：`POST /api/tasks/{task_id}/ocr` 校验前置快照后，通过 `TaskStateService.resume_for_ocr` 执行 `blocked(document_reading) -> parsing`，直接复用现有附件；OCR 失败再次阻塞于 `document_reading`。
 - 原因：首次验证了按失败阶段恢复且没有重复下载，同时控制了本阶段范围。
 - 缺点：其他失败阶段仍未获得精确恢复能力；通用 retry 设计债务继续保留。
+
+## D-023：统一选择当前有效 DocumentReadSnapshot
+
+- 问题：字段提取、未来规则和 LLM 都需要同一份当前原文，不能各自实现快照查询。
+- 方案：调用方自行查询；在 Repository 暴露零散条件；建立 `DocumentSourceSelector`。
+- 决定：选择器只返回当前主附件、当前附件 SHA-256 下 ID 最新的 `success` 快照。
+- 原因：文件更新后不会误用旧文本；OCR 与普通 Reader 对后续消费者透明；选择规则只有一个维护点。
+- 缺点：目前“最新”使用数据库 ID 顺序；未来若加入人工指定有效版本，需要扩展明确的激活机制。
+
+## D-024：ContractParse 直接关联读取快照
+
+- 问题：结构化事实如何准确追溯到原始文本版本？
+- 方案：只关联任务；关联任务和附件；直接关联 `DocumentReadSnapshot`。
+- 决定：`ContractParse.document_read_snapshot_id` 是唯一来源外键，不冗余保存 `task_id/attachment_id`；一个快照允许多个解析历史。
+- 原因：字段证据、文件 SHA、读取方式和 Extractor 版本可以完整追踪，避免重复归属字段不一致。
+- 缺点：按任务查询需要连接快照和附件表；培训项目当前数据量下可接受。
+
+## D-025：字段缺失不是系统失败
+
+- 问题：合同天然可能没有编号或某类条款，是否应当让任务 blocked？
+- 方案：缺失即异常；所有缺失都算成功；区分事实状态与程序状态。
+- 决定：字段使用 `found/not_found/ambiguous/failed`；全部目标 found 时 `ContractParse=success`，Extractor 正常完成但存在非 found 字段时为 `partial`，程序异常才为 `failed` 并 blocked。
+- 原因：缺失本身也是可供后续规则使用的事实，不能与代码崩溃混淆。
+- 缺点：后续规则必须显式理解 `not_found` 和 `ambiguous`，不能只读取 value。
+
+## D-026：确定性 Extractor 先建立可解释基线
+
+- 问题：第一版字段和条款提取应使用复杂 NLP、LLM 还是简单确定性方法？
+- 方案：立即调用 LLM；构建复杂 NLP；使用正则、字段标签、条款标题和 block 顺序。
+- 决定：实现 `ContractExtractor` 统一端口及 `DeterministicContractExtractor`；合同编号、金额、币种、日期和双方采用明确规则，条款按标题延伸到下一标题。
+- 原因：结果稳定、容易测试，每个结果都能记录 `extract_method` 和原始 block 位置；未来 LLM 可输出同一 Schema。
+- 缺点：对自由表达、表格复杂布局、同义词和无标题条款覆盖有限；本阶段不宣称通用合同理解。
+
+## D-027：ContractParse 按快照和 Extractor 版本复用
+
+- 问题：重复调用结构化提取接口是否需要再次运行 Extractor？
+- 方案：每次提取；只按任务复用；按明确输入和算法版本复用。
+- 决定：`document_read_snapshot_id + extractor_name + extractor_version` 相同，且状态为 `success/partial` 时复用并记录 `CONTRACT_PARSE_REUSED`；输入快照或版本变化时新增记录，旧历史保留。
+- 原因：相同输入与算法的可用结果无需重复计算，同时允许算法升级重新生成事实。
+- 缺点：当前没有并发抢占或数据库唯一约束，并发重复请求仍可能产生重复记录。

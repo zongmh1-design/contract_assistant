@@ -10,6 +10,7 @@ from app.integrations.approval import ApprovalGateway
 from app.models import ApprovalAttachment, ApprovalTask, TaskLog
 from app.repositories import (
     AttachmentRepository,
+    ContractParseRepository,
     DocumentReadRepository,
     TaskRepository,
 )
@@ -17,6 +18,7 @@ from app.schemas import (
     ApprovalAttachmentRead,
     ApprovalTaskRead,
     AttachmentPreparationResponse,
+    ContractParseRead,
     DocumentReadResult,
     DocumentReadSnapshotRead,
     SyncTasksResponse,
@@ -26,6 +28,7 @@ from app.services.attachment_preparation_service import (
     AttachmentPreparationError,
     AttachmentPreparationService,
 )
+from app.services.contract_extraction_service import ContractExtractionService
 from app.services.approval_sync_service import (
     ApprovalIdentityConflictError,
     ApprovalSyncService,
@@ -39,6 +42,7 @@ from app.services.document_ocr_service import (
     DocumentOcrNotAllowedError,
     DocumentOcrService,
 )
+from app.services.document_source_selector import DocumentReadSnapshotNotFoundError
 from app.services.task_state_service import TaskNotFoundError, TaskStateService
 
 
@@ -68,6 +72,7 @@ def raise_http_error(error: Exception) -> None:
             MockFailureNotConfiguredError,
             AttachmentPreparationError,
             DocumentOcrNotAllowedError,
+            DocumentReadSnapshotNotFoundError,
         ),
     ):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
@@ -220,6 +225,24 @@ def ocr_document(
         raise_http_error(error)
 
 
+@router.post("/{task_id}/parse-contract", response_model=ContractParseRead)
+def parse_contract(
+    task_id: int, request: Request, session: SessionDependency
+) -> ContractParseRead:
+    try:
+        result = ContractExtractionService(
+            session, request.app.state.contract_extractor
+        ).parse_contract(task_id)
+        return ContractParseRead.model_validate(result)
+    except (
+        TaskNotFoundError,
+        InvalidTaskStateError,
+        DocumentReadSnapshotNotFoundError,
+    ) as error:
+        session.rollback()
+        raise_http_error(error)
+
+
 @router.get(
     "/{task_id}/document-reads",
     response_model=list[DocumentReadSnapshotRead],
@@ -231,6 +254,19 @@ def list_document_reads(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
     snapshots = DocumentReadRepository(session).list_for_task(task_id)
     return [DocumentReadSnapshotRead.model_validate(item) for item in snapshots]
+
+
+@router.get(
+    "/{task_id}/contract-parses",
+    response_model=list[ContractParseRead],
+)
+def list_contract_parses(
+    task_id: int, session: SessionDependency
+) -> list[ContractParseRead]:
+    if TaskRepository(session).get_task(task_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
+    parses = ContractParseRepository(session).list_for_task(task_id)
+    return [ContractParseRead.model_validate(item) for item in parses]
 
 
 @router.get("/{task_id}/logs", response_model=list[TaskLogRead])

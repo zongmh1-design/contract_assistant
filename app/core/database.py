@@ -24,6 +24,7 @@ def create_tables(engine: Engine) -> None:
     from app.models import (  # noqa: F401
         ApprovalAttachment,
         ApprovalTask,
+        ContractParse,
         DocumentReadSnapshot,
         TaskLog,
     )

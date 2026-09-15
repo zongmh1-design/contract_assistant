@@ -54,6 +54,11 @@ class DocumentReadSnapshot(Base):
     attachment: Mapped["ApprovalAttachment"] = relationship(
         back_populates="document_reads"
     )
+    contract_parses: Mapped[list["ContractParse"]] = relationship(
+        back_populates="document_read_snapshot",
+        cascade="all, delete-orphan",
+        order_by="ContractParse.id",
+    )
 
     @property
     def blocks(self) -> list[dict]:

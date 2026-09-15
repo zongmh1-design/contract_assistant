@@ -4,6 +4,15 @@ from app.schemas.document import (
     DocumentReadStatus,
     DocumentTextBlock,
 )
+from app.schemas.contract_parse import (
+    ContractBasicInfo,
+    ContractClauses,
+    ContractParseRead,
+    EvidencePosition,
+    ExtractedFact,
+    ExtractStatus,
+    StructuredContractExtraction,
+)
 from app.schemas.task import (
     ApprovalAttachmentRead,
     ApprovalTaskRead,
@@ -22,4 +31,11 @@ __all__ = [
     "DocumentReadSnapshotRead",
     "DocumentReadStatus",
     "DocumentTextBlock",
+    "ContractBasicInfo",
+    "ContractClauses",
+    "ContractParseRead",
+    "EvidencePosition",
+    "ExtractedFact",
+    "ExtractStatus",
+    "StructuredContractExtraction",
 ]

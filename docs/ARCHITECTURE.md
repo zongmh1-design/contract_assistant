@@ -58,6 +58,25 @@ POST /api/tasks/{task_id}/ocr
 
 图片直接交给 `OcrEngine`；扫描 PDF 先按真实页序渲染到临时目录，再逐页 OCR。临时 PNG 在成功或异常后都由上下文管理器清理，不进入 `storage/contracts/` 或数据库。业务服务不导入 RapidOCR API，因此以后替换本地或云 Provider 时不修改 OCR 编排规则。
 
+当前合同事实提取调用链：
+
+```text
+POST /api/tasks/{task_id}/parse-contract
+  -> ContractExtractionService
+      -> DocumentSourceSelector          当前主附件 + 当前 SHA + 最新 success 快照
+      -> ContractParseRepository         查找同快照、同 Extractor 版本的可复用结果
+      -> ContractExtractor               统一结构化提取端口
+          -> DeterministicContractExtractor  正则、标签和条款标题
+          -> MockContractExtractor           异常及复杂结果测试
+      -> ContractParse                   保存字段、条款、证据和提取状态
+      -> TaskRepository / TaskStateService 记录日志；系统失败时 blocked
+
+GET /api/tasks/{task_id}/contract-parses
+  -> ContractParseRepository
+```
+
+Extractor 只读取 `DocumentReadSnapshot.blocks_json` 并产生统一 Schema；Service 不理解正则和条款标题。未来 LLM Extractor 必须输出相同结构，但本阶段没有 LLM 调用。字段或条款 `not_found/ambiguous` 是有效业务结果，不触发 blocked。
+
 ## 3. 各层职责
 
 | 层/目录 | 职责 | 不应承担的职责 |
@@ -80,7 +99,7 @@ POST /api/tasks/{task_id}/ocr
 | 详情与附件 | `instance_id`、附件标识 | 审批详情、本地文件与校验信息 | 任务、附件仓储和受控文件目录 | 关键接口、附件缺失或校验失败时 `blocked` |
 | 文档读取 | 主合同附件 | 原始文本、文本块与位置 | `DocumentReadSnapshot` | 空文档、读取失败或需要 OCR 时 `blocked` |
 | OCR | `ocr_required` 快照及附件 | 带页码的统一读取结果 | 新的 `DocumentReadSnapshot` | 引擎、渲染、文件或空内容错误时保存失败快照并 `blocked` |
-| 合同解析 | 有效读取快照 | 字段、条款、证据与定位 | 解析仓储 | 字段或条款提取失败时 `blocked` |
+| 合同事实提取 | 当前有效读取快照 | 字段、条款、证据与定位 | `ContractParse` | 单字段缺失记 `partial`；找不到快照或程序异常才 `blocked` |
 | 规则审查 | 有效解析结果、启用规则 | `RuleHit` 列表 | 命中仓储 | 规则执行异常时 `blocked`，不生成成功结论 |
 | 风险汇总 | 规则命中 | `ReviewResult` | 结果仓储 | 汇总失败时 `blocked` |
 | 评论回写 | 审批实例、审查结果 | 平台响应 | 评论日志及任务回写状态 | 回写失败时 `blocked` 且保留已保存结果 |

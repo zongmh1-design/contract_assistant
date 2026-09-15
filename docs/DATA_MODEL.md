@@ -1,6 +1,6 @@
 # 核心领域对象设计
 
-本文同时记录长期领域对象设计和当前已落地的数据模型。当前 SQLite 已实现 `ApprovalTask`、`TaskLog`、`ApprovalAttachment` 与 `DocumentReadSnapshot`；其余对象仍是后续阶段设计。
+本文同时记录长期领域对象设计和当前已落地的数据模型。当前 SQLite 已实现 `ApprovalTask`、`TaskLog`、`ApprovalAttachment`、`DocumentReadSnapshot` 与 `ContractParse`；其余对象仍是后续阶段设计。
 
 ## 1. ApprovalTask
 
@@ -81,35 +81,40 @@ OCR 不增加新表或新字段，而是继续创建 `DocumentReadSnapshot`：
 
 ## 3. ContractParse
 
-职责：保存一次合同解析的结果、来源附件、解析状态和失败原因；保留结构化值及其证据，而非只保存最终值。
+职责：保存一份明确读取快照经过指定版本 Extractor 后得到的结构化合同事实及证据，不保存风险结论。
 
-建议字段：
+已实现字段：
 
 - `id: int`
-- `task_id: int`
-- `attachment_id: int`
-- `parse_status: pending | success | failed`
-- `document_text_path: str | None`：完整文本单独保存时的受控路径，避免把大文本塞进任务表。
+- `document_read_snapshot_id: int`：外键关联产生本次事实的明确原文快照。
 - `basic_info_json: object`：合同标题、编号、主体、对方、金额、币种、生效/到期时间。
 - `clause_info_json: object`：付款、交付、验收、违约、保密、数据、知识产权、争议解决条款。
+- `parse_status: success | partial | failed`
 - `parse_error: str | None`
-- `parser_version: str`
+- `extractor_name: str`
+- `extractor_version: str`
 - `created_at: datetime`
 
 `basic_info_json` 和 `clause_info_json` 中每个重要字段统一保存：
 
 ```json
 {
-  "value": null,
-  "source_text": null,
-  "position": null,
-  "extract_status": "missing"
+  "value": "500000",
+  "source_text": "合同总金额为人民币500000元整。",
+  "position": {
+    "block_start": 4,
+    "block_end": 4,
+    "page_start": 1,
+    "page_end": 1
+  },
+  "extract_status": "found",
+  "extract_method": "regex_amount"
 }
 ```
 
-`extract_status` 建议使用 `extracted`、`missing`、`uncertain`、`failed`。`position` 第一版统一为可读字符串，例如 `page:3` 或 `paragraph:18`，待解析方案确认后再决定是否结构化。
+`extract_status` 使用 `found`、`not_found`、`ambiguous`、`failed`。DOCX 没有稳定页码时，`page_start/page_end` 为 null；`block_start/block_end` 仍来自读取快照。字段缺失或歧义只使整体状态成为 `partial`，Extractor 程序异常才是 `failed`。
 
-关系：属于一个任务和一个附件；一个任务可保留多次解析记录，以便重试审计，但只有一条当前有效结果进入审查。
+关系：`DocumentReadSnapshot 1 -> N ContractParse`。不冗余保存 `task_id` 或 `attachment_id`，可沿快照和附件关系追溯任务。解析记录是不可变历史，因此不设置 `updated_at`；算法版本变化时新增记录。
 
 ## 4. ReviewRule
 
@@ -210,7 +215,7 @@ OCR 不增加新表或新字段，而是继续创建 `DocumentReadSnapshot`：
 ```text
 ApprovalTask 1 ── * ApprovalAttachment
 ApprovalAttachment 1 ── * DocumentReadSnapshot
-ApprovalTask 1 ── * ContractParse * ── 1 ApprovalAttachment
+DocumentReadSnapshot 1 ── * ContractParse
 ApprovalTask 1 ── * RuleHit       * ── 1 ReviewRule
 ContractParse 1 ── * RuleHit
 ApprovalTask 1 ── * ReviewResult

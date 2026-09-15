@@ -12,6 +12,7 @@ from app.integrations.ocr import (
     PyMuPdfPageRenderer,
     RapidOcrEngine,
 )
+from app.parsers import ContractExtractor, DeterministicContractExtractor
 
 
 DEFAULT_DATABASE_URL = f"sqlite:///{Path('contract_assistant.db').resolve().as_posix()}"
@@ -23,6 +24,7 @@ def create_app(
     contract_storage_root: Path | None = None,
     ocr_engine: OcrEngine | None = None,
     pdf_page_renderer: PdfPageRenderer | None = None,
+    contract_extractor: ContractExtractor | None = None,
 ) -> FastAPI:
     engine, session_factory = create_database(database_url)
 
@@ -40,6 +42,7 @@ def create_app(
     ).resolve()
     app.state.ocr_engine = ocr_engine or RapidOcrEngine()
     app.state.pdf_page_renderer = pdf_page_renderer or PyMuPdfPageRenderer()
+    app.state.contract_extractor = contract_extractor or DeterministicContractExtractor()
     app.include_router(tasks_router)
     return app
 
