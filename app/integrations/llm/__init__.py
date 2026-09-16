@@ -8,6 +8,11 @@ from app.integrations.llm.provider import (
     LlmUsage,
     StructuredGeneration,
 )
+from app.integrations.llm.settings import (
+    LlmConfigurationError,
+    LlmProviderSettings,
+    create_llm_provider_from_environment,
+)
 
 __all__ = [
     "LLMProvider",
@@ -18,4 +23,7 @@ __all__ = [
     "MockLLMProvider",
     "OpenAICompatibleLLMProvider",
     "StructuredGeneration",
+    "LlmConfigurationError",
+    "LlmProviderSettings",
+    "create_llm_provider_from_environment",
 ]

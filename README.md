@@ -36,7 +36,7 @@ Mock 待办 -> 主合同附件 -> PDF/DOCX 读取或 OCR
 - SQLAlchemy 2.x、Alembic、SQLite
 - pypdf、python-docx
 - RapidOCR、ONNX Runtime CPU、PyMuPDF
-- OpenAI-compatible HTTP Provider（可选，仅辅助字段/条款提取）
+- OpenAI-compatible HTTP Provider（可选，用于辅助字段/条款提取和语义规则）
 - pytest、uv
 
 ## 目录结构
@@ -107,6 +107,32 @@ uv run pytest -q --basetemp=.test-tmp
 
 测试通过独立 SQLite 数据库显式使用 `create_all()` 加速，不代表正式启动会自动建表。
 
+## Real LLM configuration
+
+真实 Provider 只从环境变量读取配置。`.env.example` 仅提供变量名和占位值；项目不会自动读取 `.env`，需要由 PowerShell、部署平台或密钥管理工具把变量注入进程环境。
+
+```powershell
+$env:LLM_BASE_URL="https://api.example.com/v1"
+$env:LLM_API_KEY="replace-with-your-api-key"
+$env:LLM_MODEL="replace-with-model-name"
+$env:LLM_TIMEOUT_SECONDS="30"
+```
+
+- `LLM_BASE_URL`、`LLM_API_KEY`、`LLM_MODEL` 必须同时配置。
+- `LLM_TIMEOUT_SECONDS` 可选，默认 30 秒，必须为正数。
+- 全部核心变量未配置时，正式应用不会创建真实 Provider，也不会自动调用外部模型。
+- 部分配置会在启动时明确报错，错误信息只包含缺失变量名，不包含密钥值。
+
+配置后可以执行独立 smoke test：
+
+```powershell
+uv run python -m scripts.smoke_test_llm
+```
+
+脚本只使用虚构的小型合同片段，分别验证字段补充和违约责任语义判断，并显示模型、耗时、token usage、证据 block 和本地校验结果。若 Provider 不返回 usage，会显示 `unavailable`，不会自行估算。真实调用可能产生模型费用。
+
+默认 Demo 不调用真实 LLM，以保证离线、稳定和可重复；默认 pytest 使用 MockLLMProvider 或 httpx MockTransport，不需要 API Key、网络或付费调用。
+
 ## 主要 API
 
 | 方法 | 路径 | 用途 |
@@ -128,8 +154,8 @@ uv run pytest -q --basetemp=.test-tmp
 ## 当前限制
 
 - 只支持 PDF、DOCX、JPG、JPEG、PNG；不支持旧版 DOC 和压缩包。
-- 字段/条款可由 LLM 辅助补缺，但必须通过原文 block 证据校验；风险判断仍只有确定性规则。
-- 默认应用未配置 LLM Provider；调用辅助接口前需要在部署代码中显式注入 Provider 和凭据。
+- 字段/条款可由 LLM 辅助补缺，语义规则可辅助发现人工关注线索；两者都必须通过原文 block 证据校验。
+- 默认 Demo 和测试不启用真实 Provider；正式应用只在环境变量完整时启用。
 - OCR 同步运行，长文档可能耗时较长。
 - 当前数据库基线面向 SQLite 验证；切换生产数据库前需单独验证方言和并发策略。
 - 所有审批平台行为仍是 Mock，不应表述为已接入真实 OA。

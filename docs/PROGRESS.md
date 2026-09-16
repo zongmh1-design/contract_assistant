@@ -125,6 +125,12 @@ uv --cache-dir .uv-cache --python-preference only-system run pytest -q --basetem
 
 本阶段验收：`compileall` 通过；169 个测试全部通过，0 个失败（2 条第三方弃用警告）；空 SQLite 数据库完成三段 migration，`alembic check` 无待生成操作；deterministic Demo 从空库运行到 `task_status=done / write_status=success`。
 
+新增真实 LLM 环境配置入口、`.env.example` 和独立 `scripts.smoke_test_llm`。正式应用仅在三个核心环境变量完整时创建 OpenAI-compatible Provider；默认测试和 Demo 保持离线。Smoke 脚本使用虚构 blocks 分别验证 hybrid 字段补充和语义规则证据，不上传真实合同。
+
+新增离线 Provider 配置/兼容性测试：严格 Schema 名、usage、正数 timeout、部分配置拒绝、密钥 repr 隐藏，以及 httpx MockTransport timeout 到业务 partial 降级。
+
+本阶段验收：`compileall` 通过；179 个测试全部通过，0 个失败（2 条第三方弃用警告）；`alembic upgrade head` 和 `alembic check` 通过；全新临时数据库的 deterministic Demo 到达 `done + success`。本机未配置真实 LLM 环境变量，因此真实网络 smoke test 未执行，未用 Mock 结果冒充真实调用。
+
 ## 当前没有实现
 
 - 真实 LLM 语义规则联网 smoke test；默认测试全部使用 MockLLMProvider

@@ -317,3 +317,9 @@ ContractReviewService
 ```
 
 语义引擎不会接收整份合同，也不能输出风险等级和建议；二者仍来自 `ReviewRule`。Provider、Schema 或证据失败只使对应规则降级，不阻塞任务。ReviewResult 的命中集合指纹同时纳入当前语义判断状态，避免旧 hit 在新模型返回 not_hit 后仍被误用。
+
+## 11. 真实 LLM Provider 配置边界
+
+正式 `app.main:app` 通过 `LlmProviderSettings` 读取 `LLM_BASE_URL / LLM_API_KEY / LLM_MODEL / LLM_TIMEOUT_SECONDS`。全部核心变量缺失时不创建 Provider；部分缺失时启动报配置错误。`create_app()` 默认不读取环境，测试必须显式传入 Mock 或开启环境加载，避免开发机已有 Key 导致 pytest 意外联网。
+
+`scripts.smoke_test_llm` 不走完整审批流程，只用虚构 blocks 直接验证现有 `LlmContractExtractor` 和 `LlmSemanticRuleEngine`。Provider 仍是唯一处理 HTTP、严格 JSON Schema、timeout、模型名和 token usage 的位置。

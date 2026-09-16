@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 import httpx
@@ -61,7 +62,7 @@ class OpenAICompatibleLLMProvider(LLMProvider):
             "response_format": {
                 "type": "json_schema",
                 "json_schema": {
-                    "name": "contract_extraction",
+                    "name": _schema_name(response_schema),
                     "strict": True,
                     "schema": response_schema.model_json_schema(),
                 },
@@ -111,3 +112,10 @@ class OpenAICompatibleLLMProvider(LLMProvider):
 
 def _optional_int(value: object) -> int | None:
     return value if isinstance(value, int) else None
+
+
+def _schema_name(response_schema: type[StructuredOutput]) -> str:
+    """结构化输出名称由 Schema 决定，字段提取和语义规则共用 Provider。"""
+
+    normalized = re.sub(r"[^A-Za-z0-9_-]", "_", response_schema.__name__)
+    return normalized[:64] or "structured_output"

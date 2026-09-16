@@ -13,7 +13,7 @@ from app.integrations.ocr import (
     PyMuPdfPageRenderer,
     RapidOcrEngine,
 )
-from app.integrations.llm import LLMProvider
+from app.integrations.llm import LLMProvider, create_llm_provider_from_environment
 from app.parsers import ContractExtractor, DeterministicContractExtractor
 from app.rules import DeterministicRuleEngine, RuleEngine, seed_default_review_rules
 from app.services.review_result_builder import (
@@ -35,6 +35,7 @@ def create_app(
     rule_engine: RuleEngine | None = None,
     review_result_builder: ReviewResultBuilder | None = None,
     llm_provider: LLMProvider | None = None,
+    load_llm_from_environment: bool = False,
     create_schema: bool = False,
     seed_rules: bool = False,
 ) -> FastAPI:
@@ -64,10 +65,16 @@ def create_app(
     app.state.review_result_builder = (
         review_result_builder or DeterministicReviewResultBuilder()
     )
-    app.state.llm_provider = llm_provider
+    app.state.llm_provider = (
+        llm_provider
+        if llm_provider is not None
+        else create_llm_provider_from_environment()
+        if load_llm_from_environment
+        else None
+    )
     app.include_router(tasks_router)
     app.include_router(review_rules_router)
     return app
 
 
-app = create_app()
+app = create_app(load_llm_from_environment=True)

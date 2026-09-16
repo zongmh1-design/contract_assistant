@@ -408,3 +408,11 @@
 - 决定：单条语义规则失败只记录 `LLM_RULE_EVALUATION_DEGRADED`，任务保持 reviewing；汇总仍使用合法 RuleHit，ReviewResult 标记 partial 并明确提示语义规则未完整完成。
 - 原因：外部辅助能力不可用不应清除确定性结果，也不能把不完整审查伪装成 completed。
 - 缺点：评论回写允许 partial 结果，审批人必须看到其中的能力边界提示。
+
+## D-052：真实 Provider 只由正式入口按环境变量启用
+
+- 问题：开发机配置真实 Key 后，普通测试或默认 Demo 可能意外联网并产生费用。
+- 方案：所有 `create_app()` 自动读环境；业务代码自行读取；正式入口显式启用环境 Provider。
+- 决定：`LlmProviderSettings` 集中校验环境变量；正式模块入口开启加载，测试工厂默认关闭，Mock 仍通过参数注入。
+- 原因：凭据边界集中，业务层不感知环境变量，同时保证默认 pytest 和 Demo 不访问真实模型。
+- 缺点：自定义部署若不使用 `app.main:app`，必须显式开启环境加载或注入 Provider。
