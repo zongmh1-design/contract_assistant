@@ -92,5 +92,9 @@ class RuleReviewResponse(BaseModel):
     created_hit_count: int
     reused_hit_count: int
     skipped_future_llm_count: int
+    semantic_evaluated_count: int = 0
+    semantic_degraded_count: int = 0
+    semantic_uncertain_count: int = 0
+    semantic_reused_count: int = 0
     summary: RuleReviewSummary
     hits: list[RuleHitRead]

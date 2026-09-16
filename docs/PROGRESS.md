@@ -59,7 +59,7 @@
 - `DeterministicReviewResultBuilder` 按真实命中动态生成 summary、结构化 focus points 和中文 comment draft，不调用 LLM 或审批平台。
 - 确定性规则完整执行记 completed；构建异常保存 failed ReviewResult 并阻塞于 reviewing。成功生成后仍保持 reviewing，等待后续评论回写。
 - 新增 `CommentLog`，按回写尝试保存任务、ReviewResult、状态、响应、外部评论 ID 和错误；不重复保存评论正文。
-- `CurrentReviewResultSelector` 只选择当前 ContractParse、当前规则/命中指纹对应的最新 completed ReviewResult，不误用历史结果。
+- `CurrentReviewResultSelector` 只选择当前 ContractParse、当前规则/命中指纹对应的最新 completed/partial ReviewResult，不误用历史结果。
 - `CommentWritebackService` 只依赖 ApprovalGateway；Mock 支持成功、上游异常、无效响应以及同一 review ID 的幂等返回。
 - 评论开始时 `not_written/failed -> writing`；明确成功后 `writing -> success` 且任务 `reviewing -> done`，并记录完整 TaskLog。
 - 失败保存 failed CommentLog，任务 `write_status=failed` 并阻塞于 `comment_writeback`，已完成的附件、读取、解析、规则和结果全部保留。
@@ -117,11 +117,17 @@
 uv --cache-dir .uv-cache --python-preference only-system run pytest -q --basetemp=.test-tmp
 ```
 
-结果：156 个测试全部通过，0 个失败。本阶段新增 17 个 LLM 辅助测试，覆盖 unresolved 选择、补充、证据重建、幻觉拒绝、确定性冲突优先、四类辅助失败降级、降级后恢复、历史与复用、Provider/模型版本变化、第二份 migration、未配置 Provider 和 HTTP 适配器边界。原 Demo 和此前全部测试继续通过。测试客户端依赖产生 2 条弃用警告，不影响本阶段结果。
+上一阶段结果：156 个测试全部通过，0 个失败。
+
+本阶段新增 `llm_semantic` 模式及 4 条语义规则：违约责任失衡、知识产权归属、数据处理、特殊争议解决。`LlmSemanticRuleEngine` 只接收目标条款 blocks，结构化输出 `hit / not_hit / uncertain`；程序验证范围并重建证据，只有合法 hit 生成 RuleHit。
+
+新增 `LlmRuleEvaluation` 保存判断状态、reason、模型/token/evaluator 元数据和可选 RuleHit 关联；同 parse、规则版本、evaluator、Provider、模型可复用。Provider/Schema/证据失败不 blocked，ReviewResult 标记 partial。第三份 migration 扩展 match_mode 并创建语义审计表。
+
+本阶段验收：`compileall` 通过；169 个测试全部通过，0 个失败（2 条第三方弃用警告）；空 SQLite 数据库完成三段 migration，`alembic check` 无待生成操作；deterministic Demo 从空库运行到 `task_status=done / write_status=success`。
 
 ## 当前没有实现
 
-- LLM 语义风险规则；当前 LLM 只辅助字段/条款提取
+- 真实 LLM 语义规则联网 smoke test；默认测试全部使用 MockLLMProvider
 - 真实审批平台；当前评论回写使用 Mock Approval Gateway
 - 真实审批系统接口
 - 前端
@@ -129,6 +135,6 @@ uv --cache-dir .uv-cache --python-preference only-system run pytest -q --basetem
 
 ## 下一阶段建议（尚未开始）
 
-下一阶段可以设计 LLM 语义风险规则，但必须继续保存规则、原文证据和位置，并与当前确定性 RuleEngine 分开；需要确认后再编码。
+下一阶段可考虑语义审查的真实 Provider 手工 smoke test与运维配置，或补齐 field_extraction/reviewing 的精确 retry；需要确认后再编码。
 
 设计债务：comment_writeback 已支持精确恢复；document_reading 通过专用读取/OCR 接口恢复。field_extraction 与 reviewing 仍缺少按具体错误码分派的恢复入口，当前 `/retry` 会明确拒绝，不伪装支持。

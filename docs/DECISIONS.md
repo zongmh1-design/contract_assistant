@@ -372,7 +372,7 @@
 
 - 问题：外部模型超时、HTTP 错误或 Schema 失败是否应阻断合同审查。
 - 方案：一律 blocked；丢弃 LLM 调用；保存 hybrid 降级记录并继续。
-- 决定：确定性提取已完成时，保留其结果，新增 `status=degraded` 的 hybrid ContractParse 和 TaskLog，任务保持 parsing。
+- 决定：确定性提取已完成时，保留其结果，新增 `parse_status=partial` 的 hybrid ContractParse；`llm_metadata_json` 使用 `degraded=true` 和错误信息表达降级，并写 TaskLog，任务保持 parsing。
 - 原因：辅助 API 不应降低已有确定性闭环的可用性，同时失败元数据可审计。
 - 缺点：下游必须认识 partial 结果和能力边界，不能把降级结果宣传为 LLM 已完成补充。
 
@@ -385,3 +385,26 @@
 - 决定：Provider 协议统一结构化生成；真实实现只负责兼容 Chat Completions JSON Schema 的 HTTP 调用，Mock 用于默认测试。
 - 原因：httpx 已用于项目测试，提升为运行依赖即可获得清晰 timeout/HTTP 错误；无需引入更重的厂商 SDK。
 - 缺点：不同厂商的 JSON Schema 兼容细节仍需接入时做少量适配；当前没有默认 API Key 或联网 smoke test。
+
+## D-049：语义判断与正式 RuleHit 分开持久化
+
+- 问题：`not_hit`、`uncertain` 和 Provider 降级不会生成 RuleHit，但仍需审计与避免重复消耗 Token。
+- 方案：只写 TaskLog；把所有结果伪装成 RuleHit；新增轻量 `LlmRuleEvaluation`。
+- 决定：所有语义尝试写 evaluation，只有 `decision=hit` 且证据 block 合法时才生成 RuleHit。
+- 原因：RuleHit 继续只表示正式风险命中，同时保留完整判断历史和模型版本复用依据。
+- 缺点：当前规则查询需要同时理解 RuleHit 与最新 evaluation，增加一张支撑表。
+
+## D-050：语义规则只读取对应条款 blocks
+
+- 问题：每条语义规则发送合同全文成本高，也扩大幻觉和敏感信息暴露范围。
+- 方案：全文输入；关键词截断；使用 ContractParse 已定位的目标条款。
+- 决定：规则配置只声明 `target_clause` 与判断指令，程序根据条款 position 发送对应连续 blocks；条款缺失时跳过，不重复制造 missing 规则。
+- 原因：输入边界可解释，证据天然能回溯到当前 DocumentReadSnapshot。
+- 缺点：上游条款提取位置错误会限制语义判断，需要人工通过 partial 状态识别能力边界。
+
+## D-051：LLM 语义失败降级，ReviewResult 使用 partial
+
+- 问题：辅助模型失败是否应阻塞已完成的确定性审查。
+- 决定：单条语义规则失败只记录 `LLM_RULE_EVALUATION_DEGRADED`，任务保持 reviewing；汇总仍使用合法 RuleHit，ReviewResult 标记 partial 并明确提示语义规则未完整完成。
+- 原因：外部辅助能力不可用不应清除确定性结果，也不能把不完整审查伪装成 completed。
+- 缺点：评论回写允许 partial 结果，审批人必须看到其中的能力边界提示。

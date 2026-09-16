@@ -403,9 +403,9 @@ def test_review_rules_api_returns_idempotently_seeded_defaults(client: TestClien
     second = client.get("/api/review-rules")
 
     assert first.status_code == 200
-    assert len(first.json()) == 9
+    assert len(first.json()) == 13
     assert second.json() == first.json()
-    assert len({item["rule_code"] for item in first.json()}) == 9
+    assert len({item["rule_code"] for item in first.json()}) == 13
 
 
 def test_default_rule_seed_can_run_repeatedly(client: TestClient) -> None:
@@ -417,7 +417,7 @@ def test_default_rule_seed_can_run_repeatedly(client: TestClient) -> None:
 
     assert first_created == 0
     assert second_created == 0
-    assert count == 9
+    assert count == 13
 
 
 def test_dispute_jurisdiction_is_low_information_hit(client: TestClient) -> None:

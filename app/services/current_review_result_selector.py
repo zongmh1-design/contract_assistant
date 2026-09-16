@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from app.models import ReviewResult
 from app.repositories import (
     ReviewResultRepository,
+    LlmRuleEvaluationRepository,
     ReviewRuleRepository,
     RuleHitRepository,
 )
@@ -32,13 +33,18 @@ class CurrentReviewResultSelector:
             ) from error
         rules = ReviewRuleRepository(self.session).list_active_rules()
         hits = RuleHitRepository(self.session).list_current_for_parse(contract_parse.id)
+        semantic_evaluations = list(
+            LlmRuleEvaluationRepository(
+                self.session
+            ).latest_for_active_semantic_rules(contract_parse.id).values()
+        )
         result = ReviewResultRepository(self.session).get_latest_current(
             contract_parse.id,
             rule_set_fingerprint(rules),
-            rule_hit_fingerprint(hits),
+            rule_hit_fingerprint(hits, semantic_evaluations),
         )
         if result is None:
             raise CurrentReviewResultNotFoundError(
-                "REVIEW_RESULT_NOT_FOUND: 当前解析、规则和命中集合没有 completed 审查结果"
+                "REVIEW_RESULT_NOT_FOUND: 当前解析、规则和命中集合没有可回写审查结果"
             )
         return result

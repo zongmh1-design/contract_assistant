@@ -300,3 +300,20 @@ POST /api/tasks/{task_id}/parse-contract/llm-assist
 Provider 负责 HTTP、timeout、响应 JSON/Schema、模型名和 token usage；Extractor 负责提示边界、证据验证和合并；Service 负责编排、历史复用、日志与降级。模型不返回可信页码，最终 `source_text` 和 page/block 位置只能由程序从 `DocumentReadSnapshot.blocks_json` 重建。
 
 Provider 或结构化响应失败时仍保存复制确定性结果的 partial hybrid 记录，并写 `LLM_EXTRACTION_DEGRADED`；任务保持 parsing。确定性核心提取失败才沿原逻辑 blocked。
+
+## 10. LLM 语义风险规则
+
+```text
+ContractReviewService
+  -> DeterministicRuleEngine（field_missing / threshold / keyword / presence）
+  -> LlmSemanticRuleEngine（仅 llm_semantic）
+       -> 从 ContractParse 取得目标条款及 block 范围
+       -> LLMProvider.generate_structured
+       -> 校验 block 属于同一 DocumentReadSnapshot 和目标条款
+       -> 系统重建 evidence_text / evidence_position
+  -> LlmRuleEvaluation（hit / not_hit / uncertain / degraded 审计与复用）
+  -> 合法 hit 才生成 RuleHit
+  -> ReviewResultService 合并当前确定性与语义 RuleHit
+```
+
+语义引擎不会接收整份合同，也不能输出风险等级和建议；二者仍来自 `ReviewRule`。Provider、Schema 或证据失败只使对应规则降级，不阻塞任务。ReviewResult 的命中集合指纹同时纳入当前语义判断状态，避免旧 hit 在新模型返回 not_hit 后仍被误用。

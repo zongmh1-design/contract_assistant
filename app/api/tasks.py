@@ -335,7 +335,7 @@ def run_rules(
 ) -> RuleReviewResponse:
     try:
         return ContractReviewService(
-            session, request.app.state.rule_engine
+            session, request.app.state.rule_engine, request.app.state.llm_provider
         ).run_rules(task_id)
     except (
         TaskNotFoundError,

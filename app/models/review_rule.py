@@ -27,6 +27,7 @@ class MatchMode(str, Enum):
     KEYWORD = "keyword"
     PRESENCE = "presence"
     FUTURE_LLM = "future_llm"
+    LLM_SEMANTIC = "llm_semantic"
 
 
 class ReviewRule(Base):

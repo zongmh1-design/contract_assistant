@@ -74,6 +74,8 @@ class LlmAssistedContractExtractionService:
             outcome = self._degraded_outcome(deterministic, error)
 
         parse_status = ContractExtractionService.status_for(outcome.extraction)
+        if outcome.metadata.get("degraded"):
+            parse_status = ContractParseStatus.PARTIAL
         log_type = self._log_type(outcome.metadata)
         with self.session.begin():
             contract_parse = ContractParseRepository(self.session).add(
@@ -118,6 +120,7 @@ class LlmAssistedContractExtractionService:
             extraction=deterministic.model_copy(deep=True),
             metadata={
                 "status": "degraded",
+                "degraded": True,
                 "provider": self.provider.provider_name,
                 "model": self.provider.model_name,
                 "llm_extractor_version": self.llm_extractor.version,

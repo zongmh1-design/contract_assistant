@@ -253,6 +253,8 @@ def test_llm_failure_degrades_without_blocking(
     )
     assert result["extractor_name"] == "hybrid_contract_extractor"
     assert result["llm_metadata_json"]["status"] == "degraded"
+    assert result["llm_metadata_json"]["degraded"] is True
+    assert result["parse_status"] == "partial"
     assert result["basic_info_json"]["amount"]["value"] == "500000"
     assert client.get(f"/api/tasks/{task_id}").json()["task_status"] == "parsing"
     logs = client.get(f"/api/tasks/{task_id}/logs").json()

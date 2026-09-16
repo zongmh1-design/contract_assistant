@@ -184,6 +184,7 @@ class LlmContractExtractor:
     def _base_metadata(self, unresolved: list[str]) -> dict:
         return {
             "status": "pending",
+            "degraded": False,
             "provider": self.provider.provider_name,
             "model": self.provider.model_name,
             "llm_extractor_version": self.version,

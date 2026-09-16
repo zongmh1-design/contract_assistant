@@ -6,6 +6,7 @@ from app.models.review_rule import MatchMode, ReviewRule, RiskLevel, RuleStatus
 from app.models.rule_hit import EvidenceType, RuleHit, RuleHitStatus
 from app.models.review_result import ReviewResult, ReviewStatus, review_result_rule_hits
 from app.models.comment_log import CommentLog
+from app.models.llm_rule_evaluation import LlmRuleEvaluation
 
 __all__ = [
     "ApprovalAttachment",
@@ -18,6 +19,7 @@ __all__ = [
     "DocumentReadStatus",
     "EvidenceType",
     "MatchMode",
+    "LlmRuleEvaluation",
     "ReviewRule",
     "ReviewResult",
     "ReviewStatus",

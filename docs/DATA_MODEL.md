@@ -250,3 +250,24 @@ Alembic baseline `c22007620669` 包含当前全部表：`approval_tasks`、`appr
 - 降级时的 `error_type`、`error_message`
 
 元数据不保存 API Key、请求认证头或完整 Prompt。hybrid 仍直接关联同一个 `DocumentReadSnapshot`；原 deterministic `ContractParse` 不覆盖。
+
+`ContractParse.parse_status` 仍只有 `success / partial / failed`。LLM 辅助失败使用 `parse_status=partial`，并在 `llm_metadata_json` 保存 `degraded=true`、`error_type` 和 `error_message`，不扩展第四种正式状态。
+
+## 13. LlmRuleEvaluation
+
+职责：保存一次语义规则判断的审计与复用信息，包括没有生成 RuleHit 的 `not_hit / uncertain / degraded`。
+
+- `id`
+- `contract_parse_id`、`rule_id`、`rule_version`
+- `evaluation_fingerprint`：规则版本、evaluator 版本、Provider 和模型的 SHA-256
+- `decision`: `hit | not_hit | uncertain | null`
+- `evaluation_status`: `success | rejected | skipped | degraded`
+- `reason`：模型判断原因，不是合同证据
+- `evidence_position`：只保存程序验证后的 block/page 范围
+- `metadata_json`：provider、model、token usage、evaluator version 或错误信息
+- `rule_hit_id`：仅合法 hit 关联正式 RuleHit
+- `created_at`
+
+关系：`ContractParse 1 -> N LlmRuleEvaluation`，`ReviewRule 1 -> N LlmRuleEvaluation`，合法命中可选关联一个 `RuleHit`。模型 reason 进入 `RuleHit.hit_message`；`RuleHit.evidence_text` 始终由读取快照 blocks 重建。
+
+第三份 migration `8a7b6c5d4e3f` 增加该表，并把 `ReviewRule.match_mode` 扩展为 `llm_semantic`；baseline 与第二份 migration 保持不变。

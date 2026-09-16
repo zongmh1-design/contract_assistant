@@ -4,6 +4,7 @@ from app.repositories.contract_parse_repository import ContractParseRepository
 from app.repositories.task_repository import TaskRepository
 from app.repositories.comment_log_repository import CommentLogRepository
 from app.repositories.review_repository import (
+    LlmRuleEvaluationRepository,
     ReviewResultRepository,
     ReviewRuleRepository,
     RuleHitRepository,
@@ -16,6 +17,7 @@ __all__ = [
     "DocumentReadRepository",
     "TaskRepository",
     "ReviewRuleRepository",
+    "LlmRuleEvaluationRepository",
     "ReviewResultRepository",
     "RuleHitRepository",
 ]

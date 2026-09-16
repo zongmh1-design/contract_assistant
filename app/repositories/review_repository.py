@@ -5,6 +5,8 @@ from app.models import (
     ApprovalAttachment,
     ContractParse,
     DocumentReadSnapshot,
+    LlmRuleEvaluation,
+    MatchMode,
     ReviewRule,
     ReviewResult,
     ReviewStatus,
@@ -61,18 +63,91 @@ class RuleHitRepository:
         return list(self.session.scalars(statement))
 
     def list_current_for_parse(self, contract_parse_id: int) -> list[RuleHit]:
-        statement = (
+        deterministic_statement = (
             select(RuleHit)
             .options(joinedload(RuleHit.rule))
             .join(ReviewRule)
             .where(
                 RuleHit.contract_parse_id == contract_parse_id,
                 ReviewRule.rule_status == RuleStatus.ACTIVE,
+                ReviewRule.match_mode != MatchMode.LLM_SEMANTIC,
                 RuleHit.rule_version == ReviewRule.rule_version,
             )
             .order_by(RuleHit.id)
         )
-        return list(self.session.scalars(statement))
+        hits = list(self.session.scalars(deterministic_statement))
+        evaluations = list(
+            self.session.scalars(
+                select(LlmRuleEvaluation)
+                .options(joinedload(LlmRuleEvaluation.rule_hit).joinedload(RuleHit.rule))
+                .join(ReviewRule)
+                .where(
+                    LlmRuleEvaluation.contract_parse_id == contract_parse_id,
+                    ReviewRule.rule_status == RuleStatus.ACTIVE,
+                    ReviewRule.match_mode == MatchMode.LLM_SEMANTIC,
+                    LlmRuleEvaluation.rule_version == ReviewRule.rule_version,
+                )
+                .order_by(LlmRuleEvaluation.id.desc())
+            )
+        )
+        latest_rule_ids: set[int] = set()
+        for evaluation in evaluations:
+            if evaluation.rule_id in latest_rule_ids:
+                continue
+            latest_rule_ids.add(evaluation.rule_id)
+            if evaluation.rule_hit is not None:
+                hits.append(evaluation.rule_hit)
+        return sorted(hits, key=lambda hit: hit.id)
+
+
+class LlmRuleEvaluationRepository:
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def find_reusable(
+        self,
+        contract_parse_id: int,
+        rule_id: int,
+        rule_version: str,
+        evaluation_fingerprint: str,
+    ) -> LlmRuleEvaluation | None:
+        statement = (
+            select(LlmRuleEvaluation)
+            .options(joinedload(LlmRuleEvaluation.rule_hit).joinedload(RuleHit.rule))
+            .where(
+                LlmRuleEvaluation.contract_parse_id == contract_parse_id,
+                LlmRuleEvaluation.rule_id == rule_id,
+                LlmRuleEvaluation.rule_version == rule_version,
+                LlmRuleEvaluation.evaluation_fingerprint == evaluation_fingerprint,
+                LlmRuleEvaluation.evaluation_status != "degraded",
+            )
+            .order_by(LlmRuleEvaluation.id.desc())
+        )
+        return self.session.scalar(statement)
+
+    def add(self, evaluation: LlmRuleEvaluation) -> LlmRuleEvaluation:
+        self.session.add(evaluation)
+        self.session.flush()
+        return evaluation
+
+    def latest_for_active_semantic_rules(
+        self, contract_parse_id: int
+    ) -> dict[int, LlmRuleEvaluation]:
+        statement = (
+            select(LlmRuleEvaluation)
+            .join(ReviewRule)
+            .where(
+                LlmRuleEvaluation.contract_parse_id == contract_parse_id,
+                ReviewRule.rule_status == RuleStatus.ACTIVE,
+                ReviewRule.match_mode == MatchMode.LLM_SEMANTIC,
+                LlmRuleEvaluation.rule_version == ReviewRule.rule_version,
+            )
+            .order_by(LlmRuleEvaluation.id.desc())
+        )
+        latest: dict[int, LlmRuleEvaluation] = {}
+        for evaluation in self.session.scalars(statement):
+            latest.setdefault(evaluation.rule_id, evaluation)
+        return latest
 
 
 class ReviewResultRepository:
@@ -131,7 +206,7 @@ class ReviewResultRepository:
                 ReviewResult.contract_parse_id == contract_parse_id,
                 ReviewResult.rule_set_fingerprint == rule_set_fingerprint,
                 ReviewResult.rule_hit_fingerprint == rule_hit_fingerprint,
-                ReviewResult.review_status == ReviewStatus.COMPLETED,
+                ReviewResult.review_status.in_([ReviewStatus.COMPLETED, ReviewStatus.PARTIAL]),
             )
             .order_by(ReviewResult.id.desc())
         )

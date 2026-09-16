@@ -20,7 +20,7 @@ class DeterministicRuleEngine:
         }
         matches: list[RuleMatch] = []
         for rule in active_rules:
-            if rule.match_mode == MatchMode.FUTURE_LLM:
+            if rule.match_mode in {MatchMode.FUTURE_LLM, MatchMode.LLM_SEMANTIC}:
                 continue
             config = json.loads(rule.match_text)
             match = self._evaluate(rule, config, document)

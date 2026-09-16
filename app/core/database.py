@@ -27,6 +27,7 @@ def create_tables(engine: Engine) -> None:
         CommentLog,
         ContractParse,
         DocumentReadSnapshot,
+        LlmRuleEvaluation,
         ReviewRule,
         ReviewResult,
         RuleHit,

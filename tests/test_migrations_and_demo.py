@@ -31,6 +31,7 @@ EXPECTED_TABLES = {
     "review_result_rule_hits",
     "comment_logs",
     "task_logs",
+    "llm_rule_evaluations",
 }
 
 
@@ -87,7 +88,7 @@ def test_seed_is_idempotent_and_does_not_overwrite_manual_configuration(
     database_url = _database_url(tmp_path / "seed.db")
     upgrade_database(database_url)
 
-    assert seed_review_rules(database_url) == (9, 9)
+    assert seed_review_rules(database_url) == (13, 13)
     engine = create_engine(database_url)
     with Session(engine) as session, session.begin():
         rule = session.scalar(
@@ -98,13 +99,13 @@ def test_seed_is_idempotent_and_does_not_overwrite_manual_configuration(
         assert rule is not None
         rule.rule_name = "人工调整后的主体规则"
 
-    assert seed_review_rules(database_url) == (0, 9)
+    assert seed_review_rules(database_url) == (0, 13)
     with Session(engine) as session:
         rules = list(session.scalars(select(ReviewRule)))
         subject_rule = next(
             rule for rule in rules if rule.rule_code == "SUBJECT_INFO_MISSING"
         )
-        assert len(rules) == 9
+        assert len(rules) == 13
         assert subject_rule.rule_name == "人工调整后的主体规则"
     engine.dispose()
 
@@ -140,7 +141,7 @@ def test_demo_runs_from_empty_database_and_second_run_reuses_results(
         assert session.scalar(select(func.count()).select_from(ApprovalAttachment)) == 1
         assert session.scalar(select(func.count()).select_from(DocumentReadSnapshot)) == 1
         assert session.scalar(select(func.count()).select_from(ContractParse)) == 1
-        assert session.scalar(select(func.count()).select_from(ReviewRule)) == 9
+        assert session.scalar(select(func.count()).select_from(ReviewRule)) == 13
         assert session.scalar(select(func.count()).select_from(RuleHit)) == first.rule_hit_count
         assert session.scalar(select(func.count()).select_from(ReviewResult)) == 1
         assert session.scalar(select(func.count()).select_from(CommentLog)) == 1

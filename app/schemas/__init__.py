@@ -26,6 +26,7 @@ from app.schemas.review import (
     RuleReviewResponse,
     RuleReviewSummary,
 )
+from app.schemas.llm_semantic_review import LlmRuleDecision, LlmSemanticRuleResponse
 from app.schemas.review_result import ReviewResultRead
 from app.schemas.comment import CommentLogRead, CommentWritebackResponse
 from app.schemas.llm_extraction import (
@@ -57,6 +58,8 @@ __all__ = [
     "RuleHitRead",
     "RuleReviewResponse",
     "RuleReviewSummary",
+    "LlmRuleDecision",
+    "LlmSemanticRuleResponse",
     "ReviewResultRead",
     "LlmExtractionResponse",
     "LlmExtractStatus",

@@ -134,6 +134,54 @@ DEFAULT_REVIEW_RULES = (
         ),
         "suggestion_text": "请结合双方所在地和履约成本人工确认该管辖约定是否有利。",
     },
+    {
+        "rule_code": "BREACH_LIABILITY_IMBALANCE",
+        "rule_name": "违约责任明显单方失衡",
+        "risk_level": RiskLevel.HIGH,
+        "match_mode": MatchMode.LLM_SEMANTIC,
+        "match_text": _config(
+            target_clause="breach_clause",
+            instruction="判断违约责任是否明显只约束一方，或双方责任、赔偿范围明显不对等。只识别需要人工复核的明确线索。",
+            severity_policy="仅明显单方失衡时 hit；信息不足或需法律解释时 uncertain。",
+        ),
+        "suggestion_text": "建议人工核对双方违约责任、责任上限和免责范围是否对等。",
+    },
+    {
+        "rule_code": "IP_OWNERSHIP_RISK",
+        "rule_name": "知识产权归属需重点确认",
+        "risk_level": RiskLevel.HIGH,
+        "match_mode": MatchMode.LLM_SEMANTIC,
+        "match_text": _config(
+            target_clause="intellectual_property_clause",
+            instruction="判断条款是否存在成果或既有知识产权被概括性全部转让、归属不清或授权范围明显过宽的线索。",
+            severity_policy="仅原文明示明显风险线索时 hit；一般归属约定不命中。",
+        ),
+        "suggestion_text": "建议人工确认既有知识产权、交付成果权属及授权范围。",
+    },
+    {
+        "rule_code": "DATA_PROCESSING_RISK",
+        "rule_name": "数据处理责任需重点确认",
+        "risk_level": RiskLevel.HIGH,
+        "match_mode": MatchMode.LLM_SEMANTIC,
+        "match_text": _config(
+            target_clause="data_clause",
+            instruction="判断是否存在数据使用范围明显过宽、可任意转交第三方或数据安全责任明显缺失的线索。",
+            severity_policy="只判断条款中明确出现的风险线索；不得因未提供全文而推断违法。",
+        ),
+        "suggestion_text": "建议人工确认数据用途、保存期限、第三方共享及安全责任边界。",
+    },
+    {
+        "rule_code": "DISPUTE_RESOLUTION_RISK",
+        "rule_name": "特殊争议解决约定需确认",
+        "risk_level": RiskLevel.MEDIUM,
+        "match_mode": MatchMode.LLM_SEMANTIC,
+        "match_text": _config(
+            target_clause="dispute_resolution_clause",
+            instruction="判断是否存在异地专属管辖、境外仲裁或其他会显著增加争议处理成本的特殊约定。",
+            severity_policy="普通法院或仲裁约定不命中；仅明确特殊约定时 hit。",
+        ),
+        "suggestion_text": "建议人工评估约定机构、地点、适用规则及争议处理成本。",
+    },
 )
 
 
