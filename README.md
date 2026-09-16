@@ -55,6 +55,16 @@ storage/             运行时下载文件，不提交 Git
 
 ## 安装
 
+环境要求：Git、Python 3.12 和 `uv`。
+
+```powershell
+git clone https://github.com/zongmh1-design/contract_assistant.git
+cd contract_assistant
+uv sync
+```
+
+如果已经进入项目目录，只需执行：
+
 ```powershell
 uv sync
 ```
@@ -97,6 +107,12 @@ uv run python -m scripts.run_contract_demo
 ```
 
 第二次运行会复用已完成的任务、读取、解析、规则结果和成功评论，不会制造重复审批、规则或评论。
+
+演示与面试材料：
+
+- [10 分钟演示指南](docs/DEMO_GUIDE.md)
+- [面试讲解指南](docs/INTERVIEW_GUIDE.md)
+- [架构速记](docs/ARCHITECTURE_CHEATSHEET.md)
 
 ## 运行测试
 
